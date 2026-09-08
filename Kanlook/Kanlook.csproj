@@ -15,4 +15,8 @@
         <PackageReference Include="gong-wpf-dragdrop" Version="3.2.1" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="obj\Debug\net9.0-windows\Views\" />
+    </ItemGroup>
+
 </Project>
