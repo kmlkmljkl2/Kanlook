@@ -5,7 +5,8 @@
                     xmlns:beh="clr-namespace:Kanlook.Behaviors">
 
     <conv:FriendlyDateConverter x:Key="FriendlyDateConverter" />
-    <conv:ImportanceToVisibilityConverter x:Key="ImportanceToVisibilityConverter" />
+    <conv:ImportanceToBrushConverter x:Key="ImportanceToBrushConverter" />
+    <conv:ImportanceToLabelConverter x:Key="ImportanceToLabelConverter" />
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
     <DataTemplate DataType="{x:Type vm:MailCardViewModel}">
@@ -73,8 +74,9 @@
                 <StackPanel Grid.Row="3" Orientation="Horizontal">
                     <TextBlock Text="📎" FontSize="11" Margin="0,0,6,0"
                                Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
-                    <TextBlock Text="⚠ High priority" FontSize="10.5" Foreground="{StaticResource HighImportanceBrush}"
-                               Visibility="{Binding Importance, Converter={StaticResource ImportanceToVisibilityConverter}}" />
+                    <TextBlock Text="⚑" FontSize="12"
+                               Foreground="{Binding Importance, Converter={StaticResource ImportanceToBrushConverter}}"
+                               ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}" />
                 </StackPanel>
             </Grid>
         </Border>

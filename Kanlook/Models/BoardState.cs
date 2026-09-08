@@ -14,6 +14,9 @@ public sealed class BoardState
 
     /// <summary>entryId -&gt; column id</summary>
     public Dictionary<string, string> CardAssignments { get; init; } = [];
+
+    /// <summary>Column that unassigned/newly-arrived mail lands in. Falls back to the first column when null.</summary>
+    public string? DefaultColumnId { get; set; }
 }
 
 public sealed class AppState

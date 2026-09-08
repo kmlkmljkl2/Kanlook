@@ -61,13 +61,17 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var mails = _outlook.GetMailSummaries(value.StoreId, value.EntryId);
 
+            (CurrentContent as IDisposable)?.Dispose();
             CurrentContent = value.IsSharedMailbox
                 ? new SharedFolderViewModel(value.Name, mails, ShowPreview)
                 : new KanbanBoardViewModel(
                     value.Name,
                     FolderKeyHelper.BuildKey(value.StoreId, value.EntryId),
+                    value.StoreId,
+                    value.EntryId,
                     mails,
                     _boardStore,
+                    _outlook,
                     ShowPreview);
         }
         catch (Exception ex)
@@ -132,5 +136,9 @@ public sealed partial class MainViewModel : ObservableObject
         PreviewColumnWidth = new GridLength(0);
     }
 
-    public void Shutdown() => _outlook.Dispose();
+    public void Shutdown()
+    {
+        (CurrentContent as IDisposable)?.Dispose();
+        _outlook.Dispose();
+    }
 }

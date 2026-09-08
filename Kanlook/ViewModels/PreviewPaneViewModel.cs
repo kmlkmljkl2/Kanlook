@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Kanlook.Models;
@@ -11,6 +12,8 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
     public string SenderDisplay { get; }
     public string ToNames { get; }
     public DateTime ReceivedTime { get; }
+
+    public ObservableCollection<AttachmentInfo> Attachments { get; } = [];
 
     [ObservableProperty]
     private string? _htmlBody;
@@ -47,6 +50,19 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+
+        if (summary.HasAttachments)
+        {
+            try
+            {
+                foreach (var attachment in outlook.GetAttachments(summary.StoreId, summary.EntryId))
+                    Attachments.Add(attachment);
+            }
+            catch (Exception)
+            {
+                // Best-effort - a missing attachment list isn't worth failing the whole preview over.
+            }
         }
     }
 

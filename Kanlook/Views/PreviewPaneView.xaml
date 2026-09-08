@@ -48,6 +48,29 @@
                     <Button Content="➡ Forward" Style="{StaticResource OutlineButton}" Command="{Binding ForwardCommand}" />
                 </StackPanel>
 
+                <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,12,0,0"
+                              Visibility="{Binding Attachments.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource AppBgBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="6" Padding="8,5" Margin="0,0,6,6">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📄" FontSize="11" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding FileName}" FontSize="11.5"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding SizeDisplay, StringFormat=' · {0}'}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,12,0,0" />
             </StackPanel>
 

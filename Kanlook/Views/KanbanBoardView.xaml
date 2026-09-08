@@ -72,6 +72,24 @@
                                         </Grid>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button ToolTip="Set as the target for new/incoming mail"
+                                                    Style="{StaticResource FlatButton}" FontSize="12"
+                                                    Command="{Binding SetAsDefaultCommand}">
+                                                <TextBlock>
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="☆" />
+                                                            <Setter Property="Foreground" Value="White" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsDefaultTarget}" Value="True">
+                                                                    <Setter Property="Text" Value="★" />
+                                                                    <Setter Property="Foreground" Value="Gold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Button>
                                             <Button x:Name="ColorSwatchButton" ToolTip="Change column color"
                                                     Style="{StaticResource FlatButton}"
                                                     Command="{Binding ToggleColorPickerCommand}">
@@ -89,7 +107,7 @@
                                                     Foreground="White" FontSize="10" Command="{Binding RemoveCommand}" />
                                         </StackPanel>
 
-                                        <Popup IsOpen="{Binding IsColorPickerOpen}"
+                                        <Popup Grid.Column="0" IsOpen="{Binding IsColorPickerOpen}"
                                                PlacementTarget="{Binding ElementName=ColorSwatchButton}"
                                                Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                                             <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"

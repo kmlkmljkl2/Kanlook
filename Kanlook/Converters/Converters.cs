@@ -36,10 +36,29 @@ public sealed class NullToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-public sealed class ImportanceToVisibilityConverter : IValueConverter
+public sealed class ImportanceToBrushConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
-        value is MailImportance.High ? Visibility.Visible : Visibility.Collapsed;
+        value switch
+        {
+            MailImportance.High => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5566B")),
+            MailImportance.Low => new SolidColorBrush(Colors.LightGray),
+            _ => new SolidColorBrush(Colors.Gray),
+        };
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+public sealed class ImportanceToLabelConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
+        value switch
+        {
+            MailImportance.High => "High priority",
+            MailImportance.Low => "Low priority",
+            _ => "Normal priority",
+        };
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();
@@ -49,6 +68,15 @@ public sealed class InverseBoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
         value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
+        value is int count && count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();

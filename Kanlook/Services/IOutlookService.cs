@@ -16,6 +16,9 @@ public interface IOutlookService : IDisposable
     /// <summary>Lazily fetches the HTML body of a single mail for preview.</summary>
     string? GetHtmlBody(string storeId, string entryId);
 
+    /// <summary>Lazily fetches attachment names/sizes for a single mail for preview.</summary>
+    List<AttachmentInfo> GetAttachments(string storeId, string entryId);
+
     /// <summary>Opens Outlook's own Reply compose window for the given mail.</summary>
     void Reply(string storeId, string entryId);
 

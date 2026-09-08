@@ -1,4 +1,3 @@
-using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,6 +22,9 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isColorPickerOpen;
+
+    [ObservableProperty]
+    private bool _isDefaultTarget;
 
     public ObservableCollection<MailCardViewModel> Cards { get; } = [];
 
@@ -69,6 +71,9 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
         IsColorPickerOpen = false;
         _onChanged();
     }
+
+    [RelayCommand]
+    private void SetAsDefault() => Board.SetDefaultColumn(this);
 
     [RelayCommand]
     private void Remove() => _onRemove(this);

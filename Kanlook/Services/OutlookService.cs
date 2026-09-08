@@ -200,6 +200,44 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
+    public List<AttachmentInfo> GetAttachments(string storeId, string entryId) =>
+        InvokeWithRetry(() => GetAttachmentsCore(storeId, entryId));
+
+    private List<AttachmentInfo> GetAttachmentsCore(string storeId, string entryId)
+    {
+        EnsureConnected();
+        var result = new List<AttachmentInfo>();
+
+        dynamic item = _ns!.GetItemFromID(entryId, storeId);
+        try
+        {
+            if (!IsMailItem(item))
+                return result;
+
+            dynamic attachments = item.Attachments;
+            foreach (dynamic att in attachments)
+            {
+                try
+                {
+                    string fileName = att.FileName ?? att.DisplayName ?? "(unnamed attachment)";
+                    long size = (long)att.Size;
+                    result.Add(new AttachmentInfo { FileName = fileName, SizeDisplay = AttachmentInfo.FormatBytes(size) });
+                }
+                finally
+                {
+                    ReleaseCom(att);
+                }
+            }
+            ReleaseCom(attachments);
+        }
+        finally
+        {
+            ReleaseCom(item);
+        }
+
+        return result;
+    }
+
     public void Reply(string storeId, string entryId) =>
         InvokeWithRetry(() => RespondTo(storeId, entryId, mail => mail.Reply()));
 
