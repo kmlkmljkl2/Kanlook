@@ -20,4 +20,7 @@ public sealed class AppState
 {
     /// <summary>folder key ("storeId|folderEntryId") -&gt; board state</summary>
     public Dictionary<string, BoardState> Boards { get; init; } = [];
+
+    /// <summary>parent folder key (or the root sentinel) -&gt; ordered child EntryIds</summary>
+    public Dictionary<string, List<string>> FolderOrder { get; init; } = [];
 }

@@ -72,6 +72,15 @@
                                         </Grid>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button x:Name="ColorSwatchButton" ToolTip="Change column color"
+                                                    Style="{StaticResource FlatButton}"
+                                                    Command="{Binding ToggleColorPickerCommand}">
+                                                <Ellipse Width="12" Height="12" Stroke="White" StrokeThickness="1">
+                                                    <Ellipse.Fill>
+                                                        <Binding Path="ColorHex" Converter="{StaticResource HexToBrushConverter}" />
+                                                    </Ellipse.Fill>
+                                                </Ellipse>
+                                            </Button>
                                             <Button Content="◀" ToolTip="Move left" Style="{StaticResource FlatButton}"
                                                     Foreground="White" FontSize="10" Command="{Binding MoveLeftCommand}" />
                                             <Button Content="▶" ToolTip="Move right" Style="{StaticResource FlatButton}"
@@ -79,6 +88,83 @@
                                             <Button Content="✕" ToolTip="Remove column" Style="{StaticResource FlatButton}"
                                                     Foreground="White" FontSize="10" Command="{Binding RemoveCommand}" />
                                         </StackPanel>
+
+                                        <Popup IsOpen="{Binding IsColorPickerOpen}"
+                                               PlacementTarget="{Binding ElementName=ColorSwatchButton}"
+                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                                    BorderThickness="1" CornerRadius="8" Padding="8" Margin="0,4,0,0">
+                                                <Border.Effect>
+                                                    <DropShadowEffect Color="#1E2233" Opacity="0.18" BlurRadius="12" ShadowDepth="3" Direction="270" />
+                                                </Border.Effect>
+                                                <UniformGrid Columns="4" Rows="2" Width="136">
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#5B8DEF">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#5B8DEF" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#F2A93B">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#F2A93B" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#B87CE0">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#B87CE0" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#4CB782">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#4CB782" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#E5566B">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#E5566B" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#2FB6C4">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#2FB6C4" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#8C93A6">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#8C93A6" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
+                                                            Command="{Binding SetColorCommand}" CommandParameter="#D6558C">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Ellipse Fill="#D6558C" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </UniformGrid>
+                                            </Border>
+                                        </Popup>
                                     </Grid>
                                 </Border>
 

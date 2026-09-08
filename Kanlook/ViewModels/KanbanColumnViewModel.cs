@@ -21,6 +21,9 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
     [ObservableProperty]
     private bool _isEditingName;
 
+    [ObservableProperty]
+    private bool _isColorPickerOpen;
+
     public ObservableCollection<MailCardViewModel> Cards { get; } = [];
 
     private readonly Action<KanbanColumnViewModel> _onRemove;
@@ -53,6 +56,17 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(Name))
             Name = "Untitled";
         IsEditingName = false;
+        _onChanged();
+    }
+
+    [RelayCommand]
+    private void ToggleColorPicker() => IsColorPickerOpen = !IsColorPickerOpen;
+
+    [RelayCommand]
+    private void SetColor(string hex)
+    {
+        ColorHex = hex;
+        IsColorPickerOpen = false;
         _onChanged();
     }
 

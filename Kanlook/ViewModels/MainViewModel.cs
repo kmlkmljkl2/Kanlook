@@ -8,6 +8,8 @@ namespace Kanlook.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject
 {
+    private const string RootOrderKey = "__root__";
+
     private readonly IOutlookService _outlook;
     private readonly BoardStateStore _boardStore = new();
 
@@ -39,7 +41,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _outlook.Connect();
             foreach (var root in _outlook.BuildFolderTree())
-                RootFolders.Add(new MailFolderNodeVm(root));
+                RootFolders.Add(new MailFolderNodeVm(root, MoveFolder));
+            ApplyFolderOrder(RootFolders, RootOrderKey);
         }
         catch (Exception ex)
         {
@@ -75,6 +78,44 @@ public sealed partial class MainViewModel : ObservableObject
         {
             IsLoadingFolder = false;
         }
+    }
+
+    private void ApplyFolderOrder(ObservableCollection<MailFolderNodeVm> nodes, string parentKey)
+    {
+        var order = _boardStore.GetFolderOrder(parentKey);
+        if (order is { Count: > 0 })
+        {
+            var sorted = nodes
+                .OrderBy(n =>
+                {
+                    var i = order.IndexOf(n.EntryId);
+                    return i < 0 ? int.MaxValue : i;
+                })
+                .ToList();
+
+            nodes.Clear();
+            foreach (var n in sorted)
+                nodes.Add(n);
+        }
+
+        foreach (var n in nodes)
+            ApplyFolderOrder(n.Children, FolderKeyHelper.BuildKey(n.StoreId, n.EntryId));
+    }
+
+    private void MoveFolder(MailFolderNodeVm node, int direction)
+    {
+        var siblings = node.Parent?.Children ?? RootFolders;
+        var index = siblings.IndexOf(node);
+        var newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= siblings.Count)
+            return;
+
+        siblings.Move(index, newIndex);
+
+        var parentKey = node.Parent is null
+            ? RootOrderKey
+            : FolderKeyHelper.BuildKey(node.Parent.StoreId, node.Parent.EntryId);
+        _boardStore.SetFolderOrder(parentKey, siblings.Select(s => s.EntryId).ToList());
     }
 
     private void ShowPreview(MailCardViewModel card)

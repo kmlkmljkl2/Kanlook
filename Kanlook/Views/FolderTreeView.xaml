@@ -25,8 +25,14 @@
                   SelectedItemChanged="TreeView_OnSelectedItemChanged">
             <TreeView.ItemTemplate>
                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock FontSize="13" Margin="0,0,7,0" VerticalAlignment="Center">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" FontSize="13" Margin="0,0,7,0" VerticalAlignment="Center">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Text" Value="📁" />
@@ -38,9 +44,29 @@
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
-                        <TextBlock Text="{Binding Name}" FontSize="12.5" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12.5" VerticalAlignment="Center"
                                    Foreground="{StaticResource SidebarTextBrush}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
+                            <Button Content="▲" ToolTip="Move up" FontSize="8" Padding="3"
+                                    Foreground="{StaticResource SidebarTextMutedBrush}"
+                                    Command="{Binding MoveUpCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+                                        <Setter Property="Foreground" Value="{StaticResource SidebarTextMutedBrush}" />
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="▼" ToolTip="Move down" FontSize="8" Padding="3"
+                                    Command="{Binding MoveDownCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+                                        <Setter Property="Foreground" Value="{StaticResource SidebarTextMutedBrush}" />
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </HierarchicalDataTemplate>
             </TreeView.ItemTemplate>
         </TreeView>

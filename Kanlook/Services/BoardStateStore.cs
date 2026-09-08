@@ -58,6 +58,15 @@ public sealed class BoardStateStore
         return fresh;
     }
 
+    public List<string>? GetFolderOrder(string parentKey) =>
+        _state.FolderOrder.TryGetValue(parentKey, out var order) ? order : null;
+
+    public void SetFolderOrder(string parentKey, List<string> orderedEntryIds)
+    {
+        _state.FolderOrder[parentKey] = orderedEntryIds;
+        Save();
+    }
+
     public void Save()
     {
         try
