@@ -1,0 +1,76 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Kanlook.Models;
+using Kanlook.Services;
+
+namespace Kanlook.ViewModels;
+
+public sealed partial class PreviewPaneViewModel : ObservableObject
+{
+    public string Subject { get; }
+    public string SenderDisplay { get; }
+    public string ToNames { get; }
+    public DateTime ReceivedTime { get; }
+
+    [ObservableProperty]
+    private string? _htmlBody;
+
+    [ObservableProperty]
+    private bool _isLoading = true;
+
+    private readonly Action _onClose;
+    private readonly IOutlookService _outlook;
+    private readonly MailSummary _summary;
+
+    public PreviewPaneViewModel(MailSummary summary, IOutlookService outlook, Action onClose)
+    {
+        _outlook = outlook;
+        _summary = summary;
+
+        Subject = summary.Subject;
+        SenderDisplay = string.IsNullOrEmpty(summary.SenderEmail)
+            ? summary.SenderName
+            : $"{summary.SenderName} <{summary.SenderEmail}>";
+        ToNames = summary.ToNames;
+        ReceivedTime = summary.ReceivedTime;
+        _onClose = onClose;
+
+        try
+        {
+            summary.HtmlBody ??= outlook.GetHtmlBody(summary.StoreId, summary.EntryId);
+            HtmlBody = summary.HtmlBody ?? "<i>(no content)</i>";
+        }
+        catch (Exception ex)
+        {
+            HtmlBody = $"<i>Couldn't load message body: {ex.Message}</i>";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private void Close() => _onClose();
+
+    [RelayCommand]
+    private void Reply() => TryRespond(() => _outlook.Reply(_summary.StoreId, _summary.EntryId));
+
+    [RelayCommand]
+    private void ReplyAll() => TryRespond(() => _outlook.ReplyAll(_summary.StoreId, _summary.EntryId));
+
+    [RelayCommand]
+    private void Forward() => TryRespond(() => _outlook.Forward(_summary.StoreId, _summary.EntryId));
+
+    private static void TryRespond(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception)
+        {
+            // Best-effort for the demo - e.g. the item was moved/deleted since it was loaded.
+        }
+    }
+}
