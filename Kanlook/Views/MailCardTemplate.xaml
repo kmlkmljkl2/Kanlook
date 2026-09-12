@@ -67,6 +67,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Subject + unread dot + conversation count -->
@@ -126,8 +127,27 @@
                            TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                            MaxHeight="32" Margin="0,0,0,6" />
 
+                <!-- Outlook categories -->
+                <ItemsControl Grid.Row="3" ItemsSource="{Binding Categories}" Margin="0,0,0,4"
+                              Visibility="{Binding HasCategories, Converter={StaticResource BoolToVisibility}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border CornerRadius="8" Padding="7,2" Margin="0,0,4,4"
+                                    Background="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                    ToolTip="Outlook category">
+                                <TextBlock Text="{Binding Name}" FontSize="10" Foreground="White" />
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <!-- Icon row -->
-                <StackPanel Grid.Row="3" Orientation="Horizontal">
+                <StackPanel Grid.Row="4" Orientation="Horizontal">
                     <TextBlock Text="📎" FontSize="11" Margin="0,0,6,0"
                                Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Text="⚑" FontSize="12"
@@ -136,7 +156,7 @@
                 </StackPanel>
 
                 <!-- Conversation expander + older messages -->
-                <StackPanel Grid.Row="4"
+                <StackPanel Grid.Row="5"
                             Visibility="{Binding IsConversation, Converter={StaticResource BoolToVisibility}}">
                     <Button Style="{StaticResource ThreadExpanderButton}" Command="{Binding ToggleExpandedCommand}"
                             dd:DragDrop.DragSourceIgnore="True">

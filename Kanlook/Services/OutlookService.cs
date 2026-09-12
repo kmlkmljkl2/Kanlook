@@ -14,9 +14,18 @@ namespace Kanlook.Services;
 /// </summary>
 public sealed class OutlookService : IOutlookService
 {
+    /// <summary>
+    /// MAPI's long-term entry id for contents tables. A folder table's own "EntryID" column holds a
+    /// short-term id that does NOT match <c>MailItem.EntryID</c>; this property does.
+    /// </summary>
+    private const string PrLongTermEntryIdFromTable = "http://schemas.microsoft.com/mapi/proptag/0x66700102";
+
+    private const int OlDescending = 2;
+
     private dynamic? _app;
     private dynamic? _ns;
     private string? _defaultStoreId;
+    private readonly Dictionary<string, string> _categoryColors = new(StringComparer.OrdinalIgnoreCase);
 
     public void Connect()
     {
@@ -34,7 +43,72 @@ public sealed class OutlookService : IOutlookService
 
         _ns = _app!.GetNamespace("MAPI");
         _defaultStoreId = (string)_ns!.DefaultStore.StoreID;
+        LoadCategoryColors();
     }
+
+    /// <summary>Outlook's master category list, as category name -&gt; display hex.</summary>
+    public IReadOnlyDictionary<string, string> GetCategoryColors() => _categoryColors;
+
+    private void LoadCategoryColors()
+    {
+        _categoryColors.Clear();
+        try
+        {
+            dynamic categories = _ns!.Categories;
+            foreach (dynamic category in categories)
+            {
+                try
+                {
+                    _categoryColors[(string)category.Name] = CategoryColorHex((int)category.Color);
+                }
+                catch (COMException)
+                {
+                    // A single unreadable category shouldn't cost us the rest of the list.
+                }
+                finally
+                {
+                    ReleaseCom(category);
+                }
+            }
+
+            ReleaseCom(categories);
+        }
+        catch (COMException)
+        {
+            // Categories are cosmetic - fall back to the neutral chip colour.
+        }
+    }
+
+    /// <summary>Approximates Outlook's own swatch for an OlCategoryColor value.</summary>
+    private static string CategoryColorHex(int olCategoryColor) => olCategoryColor switch
+    {
+        1 => "#D93F3C",  // Red
+        2 => "#E8761B",  // Orange
+        3 => "#F4B183",  // Peach
+        4 => "#EFC000",  // Yellow
+        5 => "#4CB782",  // Green
+        6 => "#2FB6C4",  // Teal
+        7 => "#9BA829",  // Olive
+        8 => "#5B8DEF",  // Blue
+        9 => "#B87CE0",  // Purple
+        10 => "#A1436B", // Maroon
+        11 => "#A6B1C2", // Steel
+        12 => "#6E7B8B", // Dark Steel
+        13 => "#B4B9C6", // Gray
+        14 => "#7C8199", // Dark Gray
+        15 => "#3B3F4C", // Black
+        16 => "#A32C2A", // Dark Red
+        17 => "#B35714", // Dark Orange
+        18 => "#C98A5B", // Dark Peach
+        19 => "#B08E00", // Dark Yellow
+        20 => "#2F8A5E", // Dark Green
+        21 => "#1F8792", // Dark Teal
+        22 => "#6E7A1D", // Dark Olive
+        23 => "#3A6FF7", // Dark Blue
+        24 => "#8B5BB0", // Dark Purple
+        25 => "#75304C", // Dark Maroon
+        _ => "#8C93A6",  // None
+    };
 
     public List<MailFolderNode> BuildFolderTree() => InvokeWithRetry(BuildFolderTreeCore);
 
@@ -156,6 +230,92 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
+    public List<MailItemState> GetFolderState(string storeId, string folderEntryId, int maxCount = 300) =>
+        InvokeWithRetry(() => GetFolderStateCore(storeId, folderEntryId, maxCount));
+
+    private List<MailItemState> GetFolderStateCore(string storeId, string folderEntryId, int maxCount)
+    {
+        EnsureConnected();
+        var result = new List<MailItemState>();
+
+        dynamic folder = _ns!.GetFolderFromID(folderEntryId, storeId);
+        try
+        {
+            dynamic table = folder.GetTable();
+            try
+            {
+                dynamic columns = table.Columns;
+                columns.RemoveAll();
+                columns.Add(PrLongTermEntryIdFromTable);
+                columns.Add("MessageClass");
+                columns.Add("ReceivedTime");
+                columns.Add("Categories");
+                columns.Add("UnRead");
+                ReleaseCom(columns);
+
+                table.Sort("[ReceivedTime]", OlDescending);
+
+                // One round-trip for the whole window. Walking Folder.Items instead costs a COM
+                // call per property per item, which is far too slow to run on a timer.
+                if (table.GetArray(maxCount) is not object[,] rows)
+                    return result;
+
+                var firstColumn = rows.GetLowerBound(1);
+                for (var row = rows.GetLowerBound(0); row <= rows.GetUpperBound(0); row++)
+                {
+                    var entryId = rows[row, firstColumn] switch
+                    {
+                        byte[] bytes => Convert.ToHexString(bytes),
+                        string text => text,
+                        _ => null,
+                    };
+
+                    if (entryId is null)
+                        continue;
+
+                    // Matches IsMailItem. Non-mail rows are reported too (flagged), so the caller can
+                    // see how far back the snapshot reaches - it only ever holds maxCount rows.
+                    var isMail = rows[row, firstColumn + 1] is string messageClass &&
+                                 messageClass.StartsWith("IPM.Note", StringComparison.OrdinalIgnoreCase);
+
+                    result.Add(new MailItemState(
+                        entryId,
+                        rows[row, firstColumn + 2] as DateTime? ?? DateTime.MinValue,
+                        rows[row, firstColumn + 3] as string ?? "",
+                        rows[row, firstColumn + 4] is not bool unread || !unread,
+                        isMail));
+                }
+            }
+            finally
+            {
+                ReleaseCom(table);
+            }
+        }
+        finally
+        {
+            ReleaseCom(folder);
+        }
+
+        return result;
+    }
+
+    public MailSummary? GetMailSummary(string storeId, string entryId) =>
+        InvokeWithRetry(() => GetMailSummaryCore(storeId, entryId));
+
+    private MailSummary? GetMailSummaryCore(string storeId, string entryId)
+    {
+        EnsureConnected();
+        dynamic item = _ns!.GetItemFromID(entryId, storeId);
+        try
+        {
+            return IsMailItem(item) ? ToSummary(item, storeId) : null;
+        }
+        finally
+        {
+            ReleaseCom(item);
+        }
+    }
+
     private static bool IsMailItem(dynamic item)
     {
         try
@@ -183,6 +343,7 @@ public sealed class OutlookService : IOutlookService
         {
             ConversationId = TryGetString(() => mail.ConversationID),
             ConversationTopic = TryGetString(() => mail.ConversationTopic),
+            Categories = TryGetString(() => mail.Categories),
             EntryId = mail.EntryID,
             StoreId = storeId,
             Subject = string.IsNullOrEmpty(subject) ? "(no subject)" : subject,

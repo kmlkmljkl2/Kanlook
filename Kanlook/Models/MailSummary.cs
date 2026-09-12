@@ -12,9 +12,18 @@ public sealed partial class MailSummary
     public string ToNames { get; init; } = "";
     public required DateTime ReceivedTime { get; init; }
     public string Snippet { get; init; } = "";
-    public bool IsRead { get; init; }
     public bool HasAttachments { get; init; }
     public MailImportance Importance { get; init; } = MailImportance.Normal;
+
+    /// <summary>Kept in sync with Outlook, so marking a mail read there clears it here too.</summary>
+    public bool IsRead { get; set; }
+
+    /// <summary>Outlook's comma-separated category list. Kept in sync with Outlook.</summary>
+    public string Categories { get; set; } = "";
+
+    public IReadOnlyList<string> CategoryNames => string.IsNullOrWhiteSpace(Categories)
+        ? []
+        : Categories.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Outlook's own conversation id. Empty when the store/item doesn't expose one.</summary>
     public string ConversationId { get; init; } = "";

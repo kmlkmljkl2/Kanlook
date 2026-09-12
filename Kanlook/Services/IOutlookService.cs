@@ -13,6 +13,19 @@ public interface IOutlookService : IDisposable
     /// <summary>Latest mail items in a folder, newest first, capped at <paramref name="maxCount"/>.</summary>
     List<MailSummary> GetMailSummaries(string storeId, string folderEntryId, int maxCount = 300);
 
+    /// <summary>
+    /// Cheap batched read of a folder's newest <paramref name="maxCount"/> mails - their ids plus the
+    /// properties that change under us in Outlook. Used to spot items deleted or moved away, and
+    /// category / read-state edits, without opening every item.
+    /// </summary>
+    List<MailItemState> GetFolderState(string storeId, string folderEntryId, int maxCount = 300);
+
+    /// <summary>Full summary for one mail. Null when the id no longer refers to a mail item.</summary>
+    MailSummary? GetMailSummary(string storeId, string entryId);
+
+    /// <summary>Outlook's master category list, as category name -&gt; display hex.</summary>
+    IReadOnlyDictionary<string, string> GetCategoryColors();
+
     /// <summary>Lazily fetches the HTML body of a single mail for preview.</summary>
     string? GetHtmlBody(string storeId, string entryId);
 

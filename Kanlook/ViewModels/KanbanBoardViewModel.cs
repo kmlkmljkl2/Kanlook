@@ -11,8 +11,13 @@ namespace Kanlook.ViewModels;
 
 public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget, IDragSource, IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(25);
-    private const int PollMaxCount = 30;
+    private static readonly TimeSpan SyncInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How far back the sync looks. Must match the initial load's window, otherwise mails the board
+    /// shows but the sync can't see would look like they'd been removed in Outlook.
+    /// </summary>
+    private const int SyncMaxCount = 300;
 
     private readonly BoardStateStore _boardStore;
     private readonly BoardState _board;
@@ -20,9 +25,9 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     private readonly IOutlookService _outlook;
     private readonly string _storeId;
     private readonly string _folderEntryId;
-    private readonly HashSet<string> _knownEntryIds = [];
+    private readonly HashSet<string> _knownEntryIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<MailSummary> _mails = [];
-    private readonly DispatcherTimer _pollTimer;
+    private readonly DispatcherTimer _syncTimer;
 
     public string FolderName { get; }
 
@@ -66,9 +71,9 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
         RebuildCards();
 
-        _pollTimer = new DispatcherTimer { Interval = PollInterval };
-        _pollTimer.Tick += (_, _) => PollForNewMail();
-        _pollTimer.Start();
+        _syncTimer = new DispatcherTimer { Interval = SyncInterval };
+        _syncTimer.Tick += (_, _) => SyncWithOutlook();
+        _syncTimer.Start();
     }
 
     private void EnsureAssigned(MailSummary mail, ref bool dirty)
@@ -129,35 +134,128 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             c.IsDefaultTarget = c.Id == defaultId;
     }
 
-    private void PollForNewMail()
+    /// <summary>
+    /// Reconciles the board against the folder as Outlook currently has it: mails deleted or moved
+    /// away disappear, category and read-state edits come across, and new arrivals land on top.
+    /// Outlook's own ItemRemove event doesn't say which item went, so comparing snapshots is both
+    /// simpler and more reliable than event plumbing - and it can't miss a change.
+    /// </summary>
+    private void SyncWithOutlook()
     {
-        List<MailSummary> latest;
+        List<MailItemState> state;
         try
         {
-            latest = _outlook.GetMailSummaries(_storeId, _folderEntryId, PollMaxCount);
+            state = _outlook.GetFolderState(_storeId, _folderEntryId, SyncMaxCount);
         }
         catch (Exception)
         {
-            return; // best-effort - a transient Outlook hiccup shouldn't tear down the poll loop
+            return; // best-effort - a transient Outlook hiccup shouldn't tear down the sync loop
         }
 
-        var dirty = false;
-        var arrivals = latest
-            .Where(m => !_knownEntryIds.Contains(m.EntryId))
-            .OrderBy(m => m.ReceivedTime); // oldest first, so inserting each at the top leaves the newest on top
+        var dirty = ApplyRemovals(state);
+        ApplyStateChanges(state);
+        dirty |= ApplyArrivals(state);
 
-        foreach (var mail in arrivals)
+        if (dirty)
+            Save();
+    }
+
+    /// <summary>Drops mails that are no longer in the folder - deleted, or moved somewhere else.</summary>
+    private bool ApplyRemovals(List<MailItemState> state)
+    {
+        var present = state.Select(s => s.EntryId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // The snapshot only covers the folder's newest SyncMaxCount items. If it came back full,
+        // anything older than its oldest row is simply out of view and must not be read as removed.
+        // Non-mail rows count towards the window, which is why they're in the snapshot at all.
+        var oldestObserved = state.Count >= SyncMaxCount
+            ? state.Min(s => s.ReceivedTime)
+            : DateTime.MinValue;
+
+        var gone = _mails
+            .Where(m => !present.Contains(m.EntryId) && m.ReceivedTime >= oldestObserved)
+            .Select(m => m.EntryId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (gone.Count == 0)
+            return false;
+
+        foreach (var column in Columns)
         {
+            foreach (var card in column.Cards.ToList())
+            {
+                if (card.RemoveMessages(gone))
+                    column.Cards.Remove(card);
+            }
+        }
+
+        _mails.RemoveAll(m => gone.Contains(m.EntryId));
+        foreach (var entryId in gone)
+        {
+            _knownEntryIds.Remove(entryId);
+            _board.CardAssignments.Remove(entryId);
+        }
+
+        return true;
+    }
+
+    /// <summary>Mirrors category and read-state edits made in Outlook onto the cards.</summary>
+    private void ApplyStateChanges(List<MailItemState> state)
+    {
+        var byId = _mails.ToDictionary(m => m.EntryId, StringComparer.OrdinalIgnoreCase);
+        var touched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in state)
+        {
+            if (!byId.TryGetValue(item.EntryId, out var mail) ||
+                (mail.IsRead == item.IsRead && mail.Categories == item.Categories))
+                continue;
+
+            mail.IsRead = item.IsRead;
+            mail.Categories = item.Categories;
+            touched.Add(mail.EntryId);
+        }
+
+        if (touched.Count == 0)
+            return;
+
+        foreach (var card in Columns.SelectMany(c => c.Cards))
+            card.RefreshState(touched);
+    }
+
+    private bool ApplyArrivals(List<MailItemState> state)
+    {
+        var added = false;
+
+        // Oldest first, so inserting each at the top leaves the newest on top.
+        var arrivals = state
+            .Where(s => s.IsMail && !_knownEntryIds.Contains(s.EntryId))
+            .OrderBy(s => s.ReceivedTime);
+
+        foreach (var arrival in arrivals)
+        {
+            MailSummary? mail;
+            try
+            {
+                mail = _outlook.GetMailSummary(_storeId, arrival.EntryId);
+            }
+            catch (Exception)
+            {
+                continue; // moved or deleted again between the snapshot and now
+            }
+
+            if (mail is null)
+                continue;
+
             var columnId = DefaultColumnId();
             _board.CardAssignments[mail.EntryId] = columnId;
             _mails.Add(mail);
             _knownEntryIds.Add(mail.EntryId);
             AddToTop(Columns.First(c => c.Id == columnId), mail);
-            dirty = true;
+            added = true;
         }
 
-        if (dirty)
-            Save();
+        return added;
     }
 
     /// <summary>Places a newly arrived mail at the top of its column, folding it into its conversation tile if one is already there.</summary>
@@ -176,7 +274,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         column.Cards.Insert(0, new MailCardViewModel(mail, _onMailSelected));
     }
 
-    public void Dispose() => _pollTimer.Stop();
+    public void Dispose() => _syncTimer.Stop();
 
     private KanbanColumnViewModel CreateColumnVm(KanbanColumnDefinition def) =>
         new(def, RemoveColumn, MoveColumn, Save, this);

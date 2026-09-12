@@ -44,6 +44,8 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             _outlook.Connect();
+            CategoryPalette.Load(_outlook.GetCategoryColors());
+
             foreach (var root in _outlook.BuildFolderTree())
             {
                 // Open each mailbox straight away so its folders are there without a click.
