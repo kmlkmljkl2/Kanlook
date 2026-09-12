@@ -17,10 +17,20 @@ public sealed partial class MailCardViewModel : ObservableObject
     private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
     private readonly List<MailSummary> _messages;
 
-    /// <summary>Every message on this tile, newest first.</summary>
+    /// <summary>
+    /// Replies the user sent in this conversation, newest first. Deliberately kept apart from
+    /// <see cref="_messages"/>: they show up in the history but are not on the board, so they can't
+    /// become <see cref="Summary"/> and never affect the column, sort order, read state or delete.
+    /// </summary>
+    private readonly List<MailSummary> _sent = [];
+
+    /// <summary>Every message on this tile, newest first. Sent replies are not part of it.</summary>
     public IReadOnlyList<MailSummary> Messages => _messages;
 
-    /// <summary>Everything but <see cref="Summary"/>, newest first - what the expander reveals.</summary>
+    /// <summary>
+    /// The tile's history, newest first - everything but <see cref="Summary"/>, with the user's own
+    /// replies interleaved by time, which is what the expander reveals.
+    /// </summary>
     public ObservableCollection<MailThreadItemViewModel> OlderMessages { get; } = [];
 
     /// <summary>Every Outlook category on the tile, deduplicated across the conversation.</summary>
@@ -72,14 +82,16 @@ public sealed partial class MailCardViewModel : ObservableObject
     public bool HasAttachments => _messages.Any(m => m.HasAttachments);
     public MailImportance Importance => _messages.Max(m => m.Importance);
 
-    public string DeleteToolTip => IsConversation
+    // Delete and the read toggle only ever act on the board's own messages, so their labels count
+    // those - a tile with one received mail and two replies must not offer to delete three.
+    public string DeleteToolTip => _messages.Count > 1
         ? $"Move all {_messages.Count} messages to Deleted Items"
         : "Move to Deleted Items";
 
     /// <summary>Shows the action the button performs, not the current state.</summary>
     public string ReadToggleGlyph => IsRead ? "✉" : "✔";
 
-    public string ReadToggleToolTip => (IsRead, IsConversation) switch
+    public string ReadToggleToolTip => (IsRead, Threaded: _messages.Count > 1) switch
     {
         (true, true) => $"Mark all {_messages.Count} messages unread",
         (true, false) => "Mark unread",
@@ -89,11 +101,16 @@ public sealed partial class MailCardViewModel : ObservableObject
 
     public bool HasCategories => Categories.Count > 0;
 
-    public int MessageCount => _messages.Count;
-    public bool IsConversation => _messages.Count > 1;
+    /// <summary>The badge count, which - like Outlook's - includes the user's own replies.</summary>
+    public int MessageCount => _messages.Count + _sent.Count;
+
+    /// <summary>Messages the expander reveals.</summary>
+    private int HistoryCount => _messages.Count - 1 + _sent.Count;
+
+    public bool IsConversation => HistoryCount > 0;
     public string ExpandLabel => IsExpanded
         ? "Hide older messages"
-        : $"Show {_messages.Count - 1} older message{(_messages.Count == 2 ? "" : "s")}";
+        : $"Show {HistoryCount} older message{(HistoryCount == 1 ? "" : "s")}";
 
     public string Initial => string.IsNullOrWhiteSpace(SenderName) ? "?" : SenderName.Trim()[..1].ToUpperInvariant();
 
@@ -143,12 +160,38 @@ public sealed partial class MailCardViewModel : ObservableObject
         NotifyProjectionChanged();
     }
 
+    /// <summary>
+    /// Replaces the replies shown in the tile's history. Anything already on the board is skipped,
+    /// so viewing the Sent Items folder itself doesn't list a mail twice.
+    /// </summary>
+    public void SetSentMessages(IEnumerable<MailSummary> sent)
+    {
+        var next = sent
+            .Where(s => _messages.All(m => m.EntryId != s.EntryId))
+            .OrderByDescending(s => s.CreationTime)
+            .ToList();
+
+        if (next.Count == _sent.Count && next.Zip(_sent).All(pair => pair.First.EntryId == pair.Second.EntryId))
+            return;
+
+        _sent.Clear();
+        _sent.AddRange(next);
+        RebuildProjections();
+        NotifyProjectionChanged();
+    }
+
     private void RebuildProjections()
     {
+        // Received history and sent replies read as one thread, ordered by time like Outlook's.
         OlderMessages.Clear();
-        foreach (var message in _messages.Skip(1))
-            OlderMessages.Add(new MailThreadItemViewModel(message, _onSelect));
+        var history = _messages.Skip(1).Select(m => (Message: m, IsSent: false))
+            .Concat(_sent.Select(m => (Message: m, IsSent: true)))
+            .OrderByDescending(entry => entry.Message.CreationTime);
 
+        foreach (var entry in history)
+            OlderMessages.Add(new MailThreadItemViewModel(entry.Message, entry.IsSent, _onSelect));
+
+        // Only the board's own mail contributes categories - a reply's are the user's own doing.
         Categories.Clear();
         foreach (var name in _messages.SelectMany(m => m.CategoryNames).Distinct(StringComparer.OrdinalIgnoreCase))
             Categories.Add(CategoryChip.For(name));

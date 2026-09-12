@@ -16,6 +16,12 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly AttachmentIndex _attachmentIndex = new();
     private readonly AttachmentIndexer _indexer;
 
+    /// <summary>
+    /// Shared by every board: the sent history of a store is the same wherever it's shown, and
+    /// reading Sent Items is expensive enough to be worth keeping across folder switches.
+    /// </summary>
+    private readonly SentMailIndex _sentMail;
+
     public ObservableCollection<MailFolderNodeVm> RootFolders { get; } = [];
 
     public SettingsViewModel Settings { get; }
@@ -42,6 +48,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _outlook = outlook;
         _indexer = new AttachmentIndexer(outlook, _attachmentIndex);
+        _sentMail = new SentMailIndex(outlook);
         Settings = new SettingsViewModel(_boardStore, ApplyGrouping);
 
         try
@@ -87,6 +94,7 @@ public sealed partial class MainViewModel : ObservableObject
                     _outlook,
                     _attachmentIndex,
                     _indexer,
+                    _sentMail,
                     ShowPreview,
                     DeleteCard,
                     SetRead);

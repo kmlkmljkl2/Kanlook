@@ -26,6 +26,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
     private readonly MailSearch _search;
     private readonly AttachmentIndexer _indexer;
+    private readonly SentMailIndex _sentMail;
     private readonly IOutlookService _outlook;
     private readonly string _storeId;
     private readonly string _folderEntryId;
@@ -56,6 +57,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         IOutlookService outlook,
         AttachmentIndex attachmentIndex,
         AttachmentIndexer indexer,
+        SentMailIndex sentMail,
         Action<MailSummary> onMailSelected,
         Action<MailCardViewModel> onCardDelete,
         Action<IReadOnlyList<MailSummary>, bool> onSetRead)
@@ -71,6 +73,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _onSetRead = onSetRead;
         _search = new MailSearch(attachmentIndex);
         _indexer = indexer;
+        _sentMail = sentMail;
 
         foreach (var def in _board.Columns.OrderBy(c => c.Order))
             Columns.Add(CreateColumnVm(def));
@@ -93,6 +96,11 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _indexer.Progressed += OnIndexerProgressed;
         _indexer.Enqueue(_mails);
         RefreshIndexingStatus();
+
+        _sentMail.Changed += RefreshSentHistory;
+
+        // Reading Sent Items costs a COM call per mail, so let the folder finish opening first.
+        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, () => _sentMail.EnsureLoaded(_storeId));
 
         _syncTimer = new DispatcherTimer { Interval = SyncInterval };
         _syncTimer.Tick += (_, _) => SyncWithOutlook();
@@ -122,10 +130,37 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     {
         if (_board.CardAssignments.TryGetValue(mail.EntryId, out var columnId) &&
             Columns.Any(c => c.Id == columnId))
-            return;
+        {
+            // The column may have become a waiting one while the app was closed.
+            if (Columns.First(c => c.Id == columnId).WaitsForReply && _board.WaitingSince.TryAdd(mail.EntryId, DateTime.Now))
+                dirty = true;
 
-        _board.CardAssignments[mail.EntryId] = DefaultColumnId();
+            return;
+        }
+
+        AssignTo(mail.EntryId, DefaultColumnId());
         dirty = true;
+    }
+
+    /// <summary>
+    /// Files a mail in a column and keeps its waiting clock in step: parking it in a column that
+    /// waits for a reply starts the clock, and moving it anywhere else stops it. The clock is only
+    /// reset when the column actually changes, so a return deadline survives a restart.
+    /// </summary>
+    private void AssignTo(string entryId, string columnId)
+    {
+        var sameColumn = _board.CardAssignments.TryGetValue(entryId, out var previous) && previous == columnId;
+        _board.CardAssignments[entryId] = columnId;
+
+        if (Columns.FirstOrDefault(c => c.Id == columnId) is { WaitsForReply: true })
+        {
+            if (!sameColumn || !_board.WaitingSince.ContainsKey(entryId))
+                _board.WaitingSince[entryId] = DateTime.Now;
+        }
+        else
+        {
+            _board.WaitingSince.Remove(entryId);
+        }
     }
 
     private string ColumnIdOf(MailSummary mail) =>
@@ -166,6 +201,20 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
                     column.Cards.Add(CreateCard([mail]));
             }
         }
+
+        RefreshSentHistory();
+    }
+
+    /// <summary>
+    /// Hangs the user's own replies off the matching tiles. They're history only: the mail stays in
+    /// Sent Items and never becomes a card, so it can't move a conversation between columns.
+    /// Grouping has to be on for this - with it off every mail of a thread is its own tile, and each
+    /// one would repeat the same replies.
+    /// </summary>
+    private void RefreshSentHistory()
+    {
+        foreach (var card in Columns.SelectMany(c => c.Cards))
+            card.SetSentMessages(GroupByConversation ? _sentMail.ForConversation(card.ConversationKey) : []);
     }
 
     private MailCardViewModel CreateCard(IEnumerable<MailSummary> messages) =>
@@ -209,8 +258,101 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         ApplyRemovals(state); // persists itself
         ApplyStateChanges(state);
 
-        if (ApplyArrivals(state))
+        var changed = ApplyArrivals(state);
+        changed |= ApplyWaitingTimers();
+
+        // Cheap: one table read at most once a minute, then a fetch only for genuinely new replies.
+        _sentMail.Refresh(_storeId);
+
+        if (changed)
             Save();
+    }
+
+    /// <summary>
+    /// Sends conversations back whose wait ran out. Driven off the sync tick and measured from the
+    /// stored parked-at time, so a deadline that passed while the app was closed still fires - just
+    /// at the next poll rather than on the dot.
+    /// </summary>
+    private bool ApplyWaitingTimers()
+    {
+        var now = DateTime.Now;
+        var due = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var column in Columns.Where(c => c is { WaitsForReply: true, ReturnAfterDays: not null }))
+        {
+            foreach (var mail in _mails.Where(m => ColumnIdOf(m) == column.Id))
+            {
+                if (_board.WaitingSince.TryGetValue(mail.EntryId, out var since) &&
+                    column.ReturnDueAt(since) is { } dueAt && dueAt <= now)
+                    due.Add(mail.ConversationKey);
+            }
+        }
+
+        return ReturnFromWaiting(due);
+    }
+
+    /// <summary>
+    /// Moves these conversations out of every waiting column and into the default one, at their
+    /// sorted position. Mail whose tile an active search is hiding is reassigned as well, so it
+    /// doesn't reappear in the waiting column once the search is cleared.
+    /// </summary>
+    private bool ReturnFromWaiting(IReadOnlySet<string> conversationKeys)
+    {
+        if (conversationKeys.Count == 0)
+            return false;
+
+        var target = Columns.First(c => c.Id == DefaultColumnId());
+        var moved = false;
+
+        foreach (var column in Columns.Where(c => c.WaitsForReply && c != target).ToList())
+        {
+            foreach (var card in column.Cards.Where(c => conversationKeys.Contains(c.ConversationKey)).ToList())
+            {
+                MoveCard(card, column, target, SortedIndexFor(target, card.CreationTime));
+
+                // A merge into a tile already there leaves that tile where it was - re-sort it.
+                if (target.Cards.FirstOrDefault(c => c.ConversationKey == card.ConversationKey) is { } placed)
+                    MoveToSortedPosition(target, placed);
+
+                moved = true;
+            }
+
+            var hidden = _mails
+                .Where(m => conversationKeys.Contains(m.ConversationKey) && ColumnIdOf(m) == column.Id)
+                .ToList();
+
+            foreach (var mail in hidden)
+            {
+                AssignTo(mail.EntryId, target.Id);
+                moved = true;
+            }
+        }
+
+        return moved;
+    }
+
+    /// <summary>
+    /// Re-seeds the waiting clocks of a column whose settings just changed, so mail already parked
+    /// there starts counting from now rather than never being due.
+    /// </summary>
+    public void OnWaitingSettingsChanged(KanbanColumnViewModel column)
+    {
+        var now = DateTime.Now;
+        var parked = _board.CardAssignments
+            .Where(pair => pair.Value == column.Id)
+            .Select(pair => pair.Key)
+            .ToList();
+
+        foreach (var entryId in parked)
+        {
+            if (column.WaitsForReply)
+                _board.WaitingSince.TryAdd(entryId, now);
+            else
+                _board.WaitingSince.Remove(entryId);
+        }
+
+        ApplyWaitingTimers();
+        Save();
     }
 
     /// <summary>Drops mails that are no longer in the folder - deleted, or moved somewhere else.</summary>
@@ -320,7 +462,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
                 continue;
 
             var columnId = ColumnIdForArrival(mail);
-            _board.CardAssignments[mail.EntryId] = columnId;
+            AssignTo(mail.EntryId, columnId);
             _mails.Add(mail);
             _knownEntryIds.Add(mail.EntryId);
             Insert(Columns.First(c => c.Id == columnId), mail);
@@ -339,25 +481,29 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     /// <summary>
     /// Which column a new arrival belongs in. With grouping on it follows its conversation to
     /// wherever the user filed it - even another column - the way Outlook keeps a thread together
-    /// instead of starting a second tile back in the default column.
+    /// instead of starting a second tile back in the default column. The exception is a column that
+    /// waits for a reply: this arrival is that reply, so the thread comes back to be dealt with.
     /// </summary>
     private string ColumnIdForArrival(MailSummary mail)
     {
-        if (!GroupByConversation)
-            return DefaultColumnId();
-
         // Resolved from the mails rather than the tiles, because an active search may be hiding the
         // conversation's tile while its messages are still on the board.
         var sibling = _mails
             .Where(m => m.ConversationKey == mail.ConversationKey)
             .MaxBy(m => m.CreationTime);
 
-        if (sibling is null)
-            return DefaultColumnId();
-
         // A hand-split conversation can straddle columns; follow its newest message.
-        var columnId = ColumnIdOf(sibling);
-        return Columns.Any(c => c.Id == columnId) ? columnId : DefaultColumnId();
+        var siblingColumn = sibling is null ? null : Columns.FirstOrDefault(c => c.Id == ColumnIdOf(sibling));
+
+        // The answer the column was waiting for. Applies whether or not grouping is on - the parked
+        // messages are stale either way.
+        if (siblingColumn is { WaitsForReply: true })
+        {
+            ReturnFromWaiting(new HashSet<string>(StringComparer.Ordinal) { mail.ConversationKey });
+            return DefaultColumnId();
+        }
+
+        return GroupByConversation && siblingColumn is not null ? siblingColumn.Id : DefaultColumnId();
     }
 
     /// <summary>
@@ -411,6 +557,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     {
         _syncTimer.Stop();
         _indexer.Progressed -= OnIndexerProgressed;
+        _sentMail.Changed -= RefreshSentHistory;
     }
 
     private KanbanColumnViewModel CreateColumnVm(KanbanColumnDefinition def) =>
@@ -471,7 +618,15 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             Name = c.Name,
             ColorHex = c.ColorHex,
             Order = c.Order,
+            WaitsForReply = c.WaitsForReply,
+            ReturnAfterDays = c.ReturnAfterDays,
+            ReturnAtTime = c.ReturnAtTime,
         }));
+
+        // Clocks for mail that's no longer on the board would otherwise pile up in the state file.
+        foreach (var stale in _board.WaitingSince.Keys.Where(id => !_board.CardAssignments.ContainsKey(id)).ToList())
+            _board.WaitingSince.Remove(stale);
+
         _boardStore.Save();
     }
 
@@ -557,6 +712,6 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             target.Cards.Insert(Math.Clamp(insertIndex, 0, target.Cards.Count), card);
 
         foreach (var message in card.Messages)
-            _board.CardAssignments[message.EntryId] = target.Id;
+            AssignTo(message.EntryId, target.Id);
     }
 }

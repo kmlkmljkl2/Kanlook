@@ -127,6 +127,24 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                             </Button>
+                                            <Button x:Name="WaitButton" ToolTip="{Binding WaitingToolTip}"
+                                                    Style="{StaticResource FlatButton}" FontSize="11"
+                                                    Command="{Binding ToggleWaitSettingsCommand}">
+                                                <TextBlock Text="{Binding WaitingBadge}" Foreground="White">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <!-- Dimmed until the column actually waits for something. -->
+                                                            <Setter Property="Opacity" Value="0.45" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding WaitsForReply}" Value="True">
+                                                                    <Setter Property="Opacity" Value="1" />
+                                                                    <Setter Property="FontWeight" Value="Bold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Button>
                                             <Button x:Name="ColorSwatchButton" ToolTip="Change column color"
                                                     Style="{StaticResource FlatButton}"
                                                     Command="{Binding ToggleColorPickerCommand}">
@@ -218,6 +236,60 @@
                                                         </Button.Template>
                                                     </Button>
                                                 </UniformGrid>
+                                            </Border>
+                                        </Popup>
+
+                                        <!-- Waiting-for-reply settings -->
+                                        <Popup Grid.Column="0" IsOpen="{Binding IsWaitSettingsOpen}"
+                                               PlacementTarget="{Binding ElementName=WaitButton}"
+                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                                    BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,4,0,0" Width="248">
+                                                <Border.Effect>
+                                                    <DropShadowEffect Color="#1E2233" Opacity="0.18" BlurRadius="12" ShadowDepth="3" Direction="270" />
+                                                </Border.Effect>
+                                                <StackPanel>
+                                                    <CheckBox IsChecked="{Binding WaitsForReply}"
+                                                              Content="Waiting for reply"
+                                                              FontWeight="SemiBold" FontSize="12.5"
+                                                              Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="A reply in a conversation parked here sends the whole conversation back to the default column."
+                                                               TextWrapping="Wrap" FontSize="11" Margin="0,6,0,10"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+
+                                                    <StackPanel IsEnabled="{Binding WaitsForReply}">
+                                                        <TextBlock Text="Return even without a reply" FontSize="11.5" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+
+                                                        <Grid Margin="0,6,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="After (days)" FontSize="11" VerticalAlignment="Center"
+                                                                       Margin="0,0,8,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            <TextBox Grid.Column="1" FontSize="12" Padding="4,3"
+                                                                     ToolTip="Leave empty to wait indefinitely"
+                                                                     Text="{Binding ReturnAfterDaysText, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </Grid>
+
+                                                        <Grid Margin="0,6,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="At (HH:mm)" FontSize="11" VerticalAlignment="Center"
+                                                                       Margin="0,0,8,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                            <TextBox Grid.Column="1" FontSize="12" Padding="4,3"
+                                                                     ToolTip="Leave empty to use the time the mail was parked"
+                                                                     Text="{Binding ReturnAtTimeText, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </Grid>
+                                                    </StackPanel>
+
+                                                    <Button Content="Apply" HorizontalAlignment="Right" Margin="0,12,0,0"
+                                                            Style="{StaticResource AccentButton}"
+                                                            Command="{Binding CommitWaitSettingsCommand}" />
+                                                </StackPanel>
                                             </Border>
                                         </Popup>
                                     </Grid>

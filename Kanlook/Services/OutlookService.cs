@@ -316,6 +316,65 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
+    /// <summary>OlDefaultFolders.olFolderSentMail.</summary>
+    private const int OlFolderSentMail = 5;
+
+    public string? GetSentItemsFolderId(string storeId) =>
+        InvokeWithRetry(() => GetSentItemsFolderIdCore(storeId));
+
+    private string? GetSentItemsFolderIdCore(string storeId)
+    {
+        EnsureConnected();
+
+        // Per-store, so a shared mailbox reports its own Sent Items rather than the user's.
+        foreach (dynamic store in _ns!.Stores)
+        {
+            try
+            {
+                if ((string)store.StoreID != storeId)
+                    continue;
+
+                dynamic folder = store.GetDefaultFolder(OlFolderSentMail);
+                try
+                {
+                    return (string)folder.EntryID;
+                }
+                finally
+                {
+                    ReleaseCom(folder);
+                }
+            }
+            catch (COMException)
+            {
+                // Stores without a Sent Items folder (public folders, some delegated mailboxes) throw.
+            }
+            finally
+            {
+                ReleaseCom(store);
+            }
+        }
+
+        if (storeId != _defaultStoreId)
+            return null;
+
+        try
+        {
+            dynamic fallback = _ns!.GetDefaultFolder(OlFolderSentMail);
+            try
+            {
+                return (string)fallback.EntryID;
+            }
+            finally
+            {
+                ReleaseCom(fallback);
+            }
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
     private static bool IsMailItem(dynamic item)
     {
         try

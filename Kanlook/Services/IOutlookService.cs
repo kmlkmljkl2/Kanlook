@@ -23,6 +23,12 @@ public interface IOutlookService : IDisposable
     /// <summary>Full summary for one mail. Null when the id no longer refers to a mail item.</summary>
     MailSummary? GetMailSummary(string storeId, string entryId);
 
+    /// <summary>
+    /// Entry id of a store's Sent Items folder, so replies can be read back with
+    /// <see cref="GetMailSummaries"/>. Null when the store has no such folder (some shared stores).
+    /// </summary>
+    string? GetSentItemsFolderId(string storeId);
+
     /// <summary>Outlook's master category list, as category name -&gt; display hex.</summary>
     IReadOnlyDictionary<string, string> GetCategoryColors();
 

@@ -29,6 +29,12 @@
                          Fill="{StaticResource AccentBrush}" VerticalAlignment="Center"
                          Visibility="{Binding IsRead, Converter={StaticResource InverseBoolToVisibility}}" />
 
+                <!-- A reply the user sent. Never competes with the unread dot: sent mail is always read. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="↪" FontSize="10" Margin="0,0,5,0"
+                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+                           ToolTip="Your reply"
+                           Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}" />
+
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SenderName}" FontSize="11"
                            Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
                     <TextBlock.Style>
