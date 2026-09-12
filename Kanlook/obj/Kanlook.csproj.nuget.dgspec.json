@@ -50,6 +50,10 @@
               "target": "Package",
               "version": "[8.4.0, )"
             },
+            "PdfPig": {
+              "target": "Package",
+              "version": "[0.1.16, )"
+            },
             "gong-wpf-dragdrop": {
               "target": "Package",
               "version": "[3.2.1, )"

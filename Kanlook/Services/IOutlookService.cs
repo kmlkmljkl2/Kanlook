@@ -38,6 +38,15 @@ public interface IOutlookService : IDisposable
     /// </summary>
     string OpenAttachment(string storeId, string entryId, int attachmentIndex);
 
+    /// <summary>Extracts the attachment to a temp file and returns its path, without opening it.</summary>
+    string SaveAttachment(string storeId, string entryId, int attachmentIndex);
+
+    /// <summary>Moves the mail to its store's Deleted Items folder, like Outlook's own Delete.</summary>
+    void DeleteMail(string storeId, string entryId);
+
+    /// <summary>Marks the mail read or unread in Outlook, so the change shows up there too.</summary>
+    void SetRead(string storeId, string entryId, bool isRead);
+
     /// <summary>Opens Outlook's own Reply compose window for the given mail.</summary>
     void Reply(string storeId, string entryId);
 

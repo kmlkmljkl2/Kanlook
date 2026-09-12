@@ -6,5 +6,7 @@
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+    <conv:EmptyStringToVisibilityConverter x:Key="EmptyStringToVisibilityConverter" />
+    <conv:NonEmptyStringToVisibilityConverter x:Key="NonEmptyStringToVisibilityConverter" />
 
 </ResourceDictionary>

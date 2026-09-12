@@ -13,6 +13,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     private readonly IOutlookService _outlook;
     private readonly BoardStateStore _boardStore = new();
+    private readonly AttachmentIndex _attachmentIndex = new();
+    private readonly AttachmentIndexer _indexer;
 
     public ObservableCollection<MailFolderNodeVm> RootFolders { get; } = [];
 
@@ -39,6 +41,7 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(IOutlookService outlook)
     {
         _outlook = outlook;
+        _indexer = new AttachmentIndexer(outlook, _attachmentIndex);
         Settings = new SettingsViewModel(_boardStore, ApplyGrouping);
 
         try
@@ -73,7 +76,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             (CurrentContent as IDisposable)?.Dispose();
             CurrentContent = value.IsSharedMailbox
-                ? new SharedFolderViewModel(value.Name, mails, _boardStore.Settings, ShowPreview)
+                ? new SharedFolderViewModel(value.Name, mails, _boardStore.Settings, ShowPreview, DeleteCard, SetRead)
                 : new KanbanBoardViewModel(
                     value.Name,
                     FolderKeyHelper.BuildKey(value.StoreId, value.EntryId),
@@ -82,7 +85,11 @@ public sealed partial class MainViewModel : ObservableObject
                     mails,
                     _boardStore,
                     _outlook,
-                    ShowPreview);
+                    _attachmentIndex,
+                    _indexer,
+                    ShowPreview,
+                    DeleteCard,
+                    SetRead);
         }
         catch (Exception ex)
         {
@@ -134,9 +141,87 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void ShowPreview(MailSummary summary)
     {
-        Preview = new PreviewPaneViewModel(summary, _outlook, ClosePreview);
+        Preview = new PreviewPaneViewModel(summary, _outlook, ClosePreview, DeleteMails, SetRead);
         if (PreviewColumnWidth.Value <= 0)
             PreviewColumnWidth = new GridLength(420);
+    }
+
+    private void DeleteCard(MailCardViewModel card) => DeleteMails(card.Messages);
+
+    /// <summary>
+    /// Moves mails to Outlook's Deleted Items folder and takes them off the board right away, rather
+    /// than waiting for the next sync to notice.
+    /// </summary>
+    private void DeleteMails(IReadOnlyList<MailSummary> mails)
+    {
+        var deleted = new List<string>();
+        foreach (var mail in mails)
+        {
+            try
+            {
+                _outlook.DeleteMail(mail.StoreId, mail.EntryId);
+                deleted.Add(mail.EntryId);
+            }
+            catch (Exception ex)
+            {
+                ConnectionErrorMessage = $"Couldn't delete '{mail.Subject}': {ex.Message}";
+            }
+        }
+
+        if (deleted.Count == 0)
+            return;
+
+        switch (CurrentContent)
+        {
+            case KanbanBoardViewModel board:
+                board.DropMails(deleted);
+                break;
+            case SharedFolderViewModel shared:
+                shared.DropMails(deleted);
+                break;
+        }
+
+        if (Preview is not null && deleted.Contains(Preview.EntryId, StringComparer.OrdinalIgnoreCase))
+            ClosePreview();
+    }
+
+    /// <summary>
+    /// Marks mails read or unread in Outlook and mirrors it onto the board right away. Takes the
+    /// whole list, so a conversation tile carries its entire thread.
+    /// </summary>
+    private void SetRead(IReadOnlyList<MailSummary> mails, bool isRead)
+    {
+        var changed = new List<string>();
+        foreach (var mail in mails.Where(m => m.IsRead != isRead))
+        {
+            try
+            {
+                _outlook.SetRead(mail.StoreId, mail.EntryId, isRead);
+                mail.IsRead = isRead;
+                changed.Add(mail.EntryId);
+            }
+            catch (Exception ex)
+            {
+                ConnectionErrorMessage =
+                    $"Couldn't mark '{mail.Subject}' as {(isRead ? "read" : "unread")}: {ex.Message}";
+            }
+        }
+
+        if (changed.Count == 0)
+            return;
+
+        switch (CurrentContent)
+        {
+            case KanbanBoardViewModel board:
+                board.RefreshMailState(changed);
+                break;
+            case SharedFolderViewModel shared:
+                shared.RefreshMailState(changed);
+                break;
+        }
+
+        if (Preview is not null && changed.Contains(Preview.EntryId, StringComparer.OrdinalIgnoreCase))
+            Preview.RefreshReadState();
     }
 
     /// <summary>Re-lays out the open folder after the conversation-grouping setting was toggled.</summary>
@@ -163,6 +248,7 @@ public sealed partial class MainViewModel : ObservableObject
     public void Shutdown()
     {
         (CurrentContent as IDisposable)?.Dispose();
+        _attachmentIndex.Save();
         _outlook.Dispose();
     }
 }

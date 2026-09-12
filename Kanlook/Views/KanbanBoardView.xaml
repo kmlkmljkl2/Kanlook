@@ -16,12 +16,49 @@
 
         <Grid Grid.Row="0" Margin="28,22,28,14">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+
             <TextBlock Grid.Column="0" Text="{Binding FolderName}" FontSize="21" FontWeight="Bold"
-                       Foreground="{StaticResource TextPrimaryBrush}" />
-            <Button Grid.Column="1" Style="{StaticResource AccentButton}" Content="+ Add column"
+                       VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+
+            <TextBlock Grid.Column="1" Text="{Binding IndexingStatus}" FontSize="11.5" Margin="14,0,14,0"
+                       VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       Visibility="{Binding IndexingStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+
+            <!-- Search: subject, sender, body, categories and attachment contents -->
+            <Border Grid.Column="2" Width="260" Margin="0,0,10,0" CornerRadius="8" Padding="10,0"
+                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="🔍" FontSize="11" VerticalAlignment="Center"
+                               Margin="0,0,6,0" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                    <Grid Grid.Column="1">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                                 Style="{StaticResource SearchTextBox}" />
+                        <TextBlock Text="Search mail and attachments" FontSize="12" IsHitTestVisible="False"
+                                   VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+                                   Visibility="{Binding SearchText, Converter={StaticResource EmptyStringToVisibilityConverter}}" />
+                    </Grid>
+
+                    <Button Grid.Column="2" Content="✕" Style="{StaticResource FlatButton}" FontSize="10"
+                            Padding="4" ToolTip="Clear search" Command="{Binding ClearSearchCommand}"
+                            Visibility="{Binding SearchText, Converter={StaticResource NonEmptyStringToVisibilityConverter}}" />
+                </Grid>
+            </Border>
+
+            <Button Grid.Column="3" Style="{StaticResource AccentButton}" Content="+ Add column"
                     Command="{Binding AddColumnCommand}" />
         </Grid>
 

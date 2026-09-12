@@ -328,12 +328,14 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
+    private const int SearchBodyMaxChars = 8_000;
+
     private static MailSummary ToSummary(dynamic mail, string storeId)
     {
         string body = mail.Body ?? "";
-        var snippet = body.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        if (snippet.Length > 160)
-            snippet = snippet[..160] + "…";
+        var flattened = body.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        var snippet = flattened.Length > 160 ? flattened[..160] + "…" : flattened;
+        var searchBody = flattened.Length > SearchBodyMaxChars ? flattened[..SearchBodyMaxChars] : flattened;
 
         string subject = mail.Subject ?? "";
         string senderName = mail.SenderName ?? "";
@@ -351,7 +353,9 @@ public sealed class OutlookService : IOutlookService
             SenderEmail = mail.SenderEmailAddress ?? "",
             ToNames = mail.To ?? "",
             ReceivedTime = mail.ReceivedTime,
+            CreationTime = mail.CreationTime,
             Snippet = snippet,
+            SearchBody = searchBody,
             IsRead = !(bool)mail.UnRead,
             HasAttachments = mail.Attachments != null && (int)mail.Attachments.Count > 0,
             Importance = importance switch
@@ -426,10 +430,20 @@ public sealed class OutlookService : IOutlookService
         return result;
     }
 
-    public string OpenAttachment(string storeId, string entryId, int attachmentIndex) =>
-        InvokeWithRetry(() => OpenAttachmentCore(storeId, entryId, attachmentIndex));
+    public string OpenAttachment(string storeId, string entryId, int attachmentIndex)
+    {
+        var path = SaveAttachment(storeId, entryId, attachmentIndex);
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        return Path.GetFileName(path);
+    }
 
-    private string OpenAttachmentCore(string storeId, string entryId, int attachmentIndex)
+    public string SaveAttachment(string storeId, string entryId, int attachmentIndex) =>
+        InvokeWithRetry(() => SaveAttachmentCore(storeId, entryId, attachmentIndex));
+
+    /// <summary>
+    /// Outlook can only hand an attachment over as a file, so extract it to a per-mail cache folder.
+    /// </summary>
+    private string SaveAttachmentCore(string storeId, string entryId, int attachmentIndex)
     {
         EnsureConnected();
 
@@ -444,12 +458,8 @@ public sealed class OutlookService : IOutlookService
                 {
                     string fileName = att.FileName ?? att.DisplayName ?? "attachment";
                     var path = BuildCachePath(entryId, fileName);
-
-                    // Outlook can only hand an attachment over as a file, so extract it to a
-                    // per-mail cache folder and let the shell pick the right application.
                     att.SaveAsFile(path);
-                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-                    return fileName;
+                    return path;
                 }
                 finally
                 {
@@ -460,6 +470,51 @@ public sealed class OutlookService : IOutlookService
             {
                 ReleaseCom(attachments);
             }
+        }
+        finally
+        {
+            ReleaseCom(item);
+        }
+    }
+
+    public void DeleteMail(string storeId, string entryId) =>
+        InvokeWithRetry(() => DeleteMailCore(storeId, entryId));
+
+    private void DeleteMailCore(string storeId, string entryId)
+    {
+        EnsureConnected();
+
+        dynamic item = _ns!.GetItemFromID(entryId, storeId);
+        try
+        {
+            // MailItem.Delete moves the mail to the store's Deleted Items folder, exactly like
+            // pressing Delete in Outlook - so it stays recoverable from there.
+            if (IsMailItem(item))
+                item.Delete();
+        }
+        finally
+        {
+            ReleaseCom(item);
+        }
+    }
+
+    public void SetRead(string storeId, string entryId, bool isRead) =>
+        InvokeWithRetry(() => SetReadCore(storeId, entryId, isRead));
+
+    private void SetReadCore(string storeId, string entryId, bool isRead)
+    {
+        EnsureConnected();
+
+        dynamic item = _ns!.GetItemFromID(entryId, storeId);
+        try
+        {
+            if (!IsMailItem(item))
+                return;
+
+            // Outlook models this the other way round, as UnRead. Save() commits it, otherwise the
+            // change would live only on our copy of the item and never reach Outlook's own views.
+            item.UnRead = !isRead;
+            item.Save();
         }
         finally
         {

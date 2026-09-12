@@ -11,7 +11,17 @@ public sealed partial class MailSummary
     public string SenderEmail { get; init; } = "";
     public string ToNames { get; init; } = "";
     public required DateTime ReceivedTime { get; init; }
+
+    /// <summary>Outlook's CreationTime - what the board sorts on.</summary>
+    public required DateTime CreationTime { get; init; }
+
     public string Snippet { get; init; } = "";
+
+    /// <summary>
+    /// Body text kept for searching (capped). Free to collect: the body is already read to build
+    /// <see cref="Snippet"/>.
+    /// </summary>
+    public string SearchBody { get; init; } = "";
     public bool HasAttachments { get; init; }
     public MailImportance Importance { get; init; } = MailImportance.Normal;
 

@@ -91,6 +91,16 @@
         <Setter Property="FontSize" Value="13" />
     </Style>
 
+    <!-- Borderless search field (board header) -->
+    <Style x:Key="SearchTextBox" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0,7" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
+
     <!-- Sidebar tree -->
     <Style x:Key="SidebarTreeView" TargetType="TreeView">
         <Setter Property="Background" Value="Transparent" />
@@ -230,6 +240,19 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Per-card action (mark read, delete). Stays out of the way until the card is hovered. -->
+    <Style x:Key="CardActionButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="Opacity" Value="0" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Border}, Path=IsMouseOver}"
+                         Value="True">
+                <Setter Property="Opacity" Value="1" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Mail card -->

@@ -13,6 +13,8 @@ namespace Kanlook.ViewModels;
 public sealed partial class MailCardViewModel : ObservableObject
 {
     private readonly Action<MailSummary> _onSelect;
+    private readonly Action<MailCardViewModel> _onDelete;
+    private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
     private readonly List<MailSummary> _messages;
 
     /// <summary>Every message on this tile, newest first.</summary>
@@ -28,18 +30,28 @@ public sealed partial class MailCardViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ExpandLabel))]
     private bool _isExpanded;
 
-    public MailCardViewModel(MailSummary summary, Action<MailSummary> onSelect)
-        : this([summary], onSelect)
+    public MailCardViewModel(
+        MailSummary summary,
+        Action<MailSummary> onSelect,
+        Action<MailCardViewModel> onDelete,
+        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
+        : this([summary], onSelect, onDelete, onSetRead)
     {
     }
 
-    public MailCardViewModel(IEnumerable<MailSummary> messages, Action<MailSummary> onSelect)
+    public MailCardViewModel(
+        IEnumerable<MailSummary> messages,
+        Action<MailSummary> onSelect,
+        Action<MailCardViewModel> onDelete,
+        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
     {
-        _messages = messages.OrderByDescending(m => m.ReceivedTime).ToList();
+        _messages = [.. messages.OrderByDescending(m => m.CreationTime)];
         if (_messages.Count == 0)
             throw new ArgumentException("A card needs at least one message.", nameof(messages));
 
         _onSelect = onSelect;
+        _onDelete = onDelete;
+        _onSetRead = onSetRead;
         RebuildProjections();
     }
 
@@ -52,9 +64,28 @@ public sealed partial class MailCardViewModel : ObservableObject
     public string SenderName => Summary.SenderName;
     public string Snippet => Summary.Snippet;
     public DateTime ReceivedTime => Summary.ReceivedTime;
+
+    /// <summary>What columns sort on - the newest creation time on the tile.</summary>
+    public DateTime CreationTime => Summary.CreationTime;
+
     public bool IsRead => _messages.All(m => m.IsRead);
     public bool HasAttachments => _messages.Any(m => m.HasAttachments);
     public MailImportance Importance => _messages.Max(m => m.Importance);
+
+    public string DeleteToolTip => IsConversation
+        ? $"Move all {_messages.Count} messages to Deleted Items"
+        : "Move to Deleted Items";
+
+    /// <summary>Shows the action the button performs, not the current state.</summary>
+    public string ReadToggleGlyph => IsRead ? "✉" : "✔";
+
+    public string ReadToggleToolTip => (IsRead, IsConversation) switch
+    {
+        (true, true) => $"Mark all {_messages.Count} messages unread",
+        (true, false) => "Mark unread",
+        (false, true) => $"Mark all {_messages.Count} messages read",
+        (false, false) => "Mark read",
+    };
 
     public bool HasCategories => Categories.Count > 0;
 
@@ -79,7 +110,7 @@ public sealed partial class MailCardViewModel : ObservableObject
         if (!added)
             return;
 
-        _messages.Sort((a, b) => b.ReceivedTime.CompareTo(a.ReceivedTime));
+        _messages.Sort((a, b) => b.CreationTime.CompareTo(a.CreationTime));
         RebuildProjections();
         NotifyProjectionChanged();
     }
@@ -131,7 +162,11 @@ public sealed partial class MailCardViewModel : ObservableObject
         OnPropertyChanged(nameof(SenderName));
         OnPropertyChanged(nameof(Snippet));
         OnPropertyChanged(nameof(ReceivedTime));
+        OnPropertyChanged(nameof(CreationTime));
+        OnPropertyChanged(nameof(DeleteToolTip));
         OnPropertyChanged(nameof(IsRead));
+        OnPropertyChanged(nameof(ReadToggleGlyph));
+        OnPropertyChanged(nameof(ReadToggleToolTip));
         OnPropertyChanged(nameof(HasAttachments));
         OnPropertyChanged(nameof(Importance));
         OnPropertyChanged(nameof(Initial));
@@ -143,6 +178,16 @@ public sealed partial class MailCardViewModel : ObservableObject
 
     [RelayCommand]
     private void Select() => _onSelect(Summary);
+
+    [RelayCommand]
+    private void Delete() => _onDelete(this);
+
+    /// <summary>
+    /// Flips the tile's read state. A conversation tile is read only once every message on it is, so
+    /// the toggle carries the whole thread with it rather than just the newest message.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleRead() => _onSetRead(_messages, !IsRead);
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;

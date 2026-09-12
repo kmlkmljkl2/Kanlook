@@ -12,6 +12,7 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
     public string SenderDisplay { get; }
     public string ToNames { get; }
     public DateTime ReceivedTime { get; }
+    public string EntryId => _summary.EntryId;
 
     public ObservableCollection<AttachmentViewModel> Attachments { get; } = [];
 
@@ -25,11 +26,23 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
     [ObservableProperty]
     private string? _attachmentError;
 
+    public bool IsRead => _summary.IsRead;
+
+    /// <summary>Names the action, not the state - the button flips whatever the mail currently is.</summary>
+    public string ReadToggleLabel => _summary.IsRead ? "✉ Mark unread" : "✔ Mark read";
+
     private readonly Action _onClose;
+    private readonly Action<IReadOnlyList<MailSummary>> _onDelete;
+    private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
     private readonly IOutlookService _outlook;
     private readonly MailSummary _summary;
 
-    public PreviewPaneViewModel(MailSummary summary, IOutlookService outlook, Action onClose)
+    public PreviewPaneViewModel(
+        MailSummary summary,
+        IOutlookService outlook,
+        Action onClose,
+        Action<IReadOnlyList<MailSummary>> onDelete,
+        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
     {
         _outlook = outlook;
         _summary = summary;
@@ -41,6 +54,8 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
         ToNames = summary.ToNames;
         ReceivedTime = summary.ReceivedTime;
         _onClose = onClose;
+        _onDelete = onDelete;
+        _onSetRead = onSetRead;
 
         try
         {
@@ -85,6 +100,19 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
 
     [RelayCommand]
     private void Close() => _onClose();
+
+    [RelayCommand]
+    private void Delete() => _onDelete([_summary]);
+
+    [RelayCommand]
+    private void ToggleRead() => _onSetRead([_summary], !_summary.IsRead);
+
+    /// <summary>Restates the toggle after the mail's read state changed, here or on the board.</summary>
+    public void RefreshReadState()
+    {
+        OnPropertyChanged(nameof(IsRead));
+        OnPropertyChanged(nameof(ReadToggleLabel));
+    }
 
     [RelayCommand]
     private void Reply() => TryRespond(() => _outlook.Reply(_summary.StoreId, _summary.EntryId));

@@ -22,6 +22,10 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     private readonly BoardStateStore _boardStore;
     private readonly BoardState _board;
     private readonly Action<MailSummary> _onMailSelected;
+    private readonly Action<MailCardViewModel> _onCardDelete;
+    private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
+    private readonly MailSearch _search;
+    private readonly AttachmentIndexer _indexer;
     private readonly IOutlookService _outlook;
     private readonly string _storeId;
     private readonly string _folderEntryId;
@@ -33,6 +37,13 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
     public ObservableCollection<KanbanColumnViewModel> Columns { get; } = [];
 
+    /// <summary>Filters the board as you type. Empty shows everything.</summary>
+    [ObservableProperty]
+    private string _searchText = "";
+
+    [ObservableProperty]
+    private string? _indexingStatus;
+
     private bool GroupByConversation => _boardStore.Settings.GroupByConversation;
 
     public KanbanBoardViewModel(
@@ -43,7 +54,11 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         List<MailSummary> mails,
         BoardStateStore boardStore,
         IOutlookService outlook,
-        Action<MailSummary> onMailSelected)
+        AttachmentIndex attachmentIndex,
+        AttachmentIndexer indexer,
+        Action<MailSummary> onMailSelected,
+        Action<MailCardViewModel> onCardDelete,
+        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
     {
         FolderName = folderName;
         _boardStore = boardStore;
@@ -52,6 +67,10 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _storeId = storeId;
         _folderEntryId = folderEntryId;
         _onMailSelected = onMailSelected;
+        _onCardDelete = onCardDelete;
+        _onSetRead = onSetRead;
+        _search = new MailSearch(attachmentIndex);
+        _indexer = indexer;
 
         foreach (var def in _board.Columns.OrderBy(c => c.Order))
             Columns.Add(CreateColumnVm(def));
@@ -71,10 +90,33 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
         RebuildCards();
 
+        _indexer.Progressed += OnIndexerProgressed;
+        _indexer.Enqueue(_mails);
+        RefreshIndexingStatus();
+
         _syncTimer = new DispatcherTimer { Interval = SyncInterval };
         _syncTimer.Tick += (_, _) => SyncWithOutlook();
         _syncTimer.Start();
     }
+
+    partial void OnSearchTextChanged(string value) => RebuildCards();
+
+    [RelayCommand]
+    private void ClearSearch() => SearchText = "";
+
+    private void OnIndexerProgressed()
+    {
+        RefreshIndexingStatus();
+
+        // Newly indexed attachment text can change what an active search matches.
+        if (SearchText.Length > 0)
+            RebuildCards();
+    }
+
+    private void RefreshIndexingStatus() =>
+        IndexingStatus = _indexer.PendingCount > 0
+            ? $"Indexing attachments… {_indexer.PendingCount} left"
+            : null;
 
     private void EnsureAssigned(MailSummary mail, ref bool dirty)
     {
@@ -90,11 +132,14 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _board.CardAssignments.TryGetValue(mail.EntryId, out var id) ? id : DefaultColumnId();
 
     /// <summary>
-    /// Rebuilds every column's tiles from the mails we know about, newest first. Grouping happens
-    /// inside a column, so mails of one conversation that the user pulled apart by hand stay apart.
+    /// Rebuilds every column's tiles from the mails we know about, newest creation time first, and
+    /// filtered by the search box. Grouping happens inside a column, so mails of one conversation
+    /// that the user pulled apart by hand stay apart.
     /// </summary>
     public void RebuildCards()
     {
+        var terms = MailSearch.ParseTerms(SearchText);
+
         foreach (var column in Columns)
         {
             column.Cards.Clear();
@@ -102,20 +147,29 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             var mails = _mails.Where(m => ColumnIdOf(m) == column.Id);
             if (GroupByConversation)
             {
+                // A conversation is kept whole when any of its messages matches.
                 var conversations = mails
                     .GroupBy(m => m.ConversationKey)
-                    .OrderByDescending(g => g.Max(m => m.ReceivedTime));
+                    .Where(g => g.Any(m => _search.Matches(m, terms)))
+                    .OrderByDescending(g => g.Max(m => m.CreationTime));
 
                 foreach (var conversation in conversations)
-                    column.Cards.Add(new MailCardViewModel(conversation, _onMailSelected));
+                    column.Cards.Add(CreateCard(conversation));
             }
             else
             {
-                foreach (var mail in mails.OrderByDescending(m => m.ReceivedTime))
-                    column.Cards.Add(new MailCardViewModel(mail, _onMailSelected));
+                var matching = mails
+                    .Where(m => _search.Matches(m, terms))
+                    .OrderByDescending(m => m.CreationTime);
+
+                foreach (var mail in matching)
+                    column.Cards.Add(CreateCard([mail]));
             }
         }
     }
+
+    private MailCardViewModel CreateCard(IEnumerable<MailSummary> messages) =>
+        new(messages, _onMailSelected, _onCardDelete, _onSetRead);
 
     private string DefaultColumnId() =>
         _board.DefaultColumnId is { } id && Columns.Any(c => c.Id == id) ? id : Columns[0].Id;
@@ -152,16 +206,15 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             return; // best-effort - a transient Outlook hiccup shouldn't tear down the sync loop
         }
 
-        var dirty = ApplyRemovals(state);
+        ApplyRemovals(state); // persists itself
         ApplyStateChanges(state);
-        dirty |= ApplyArrivals(state);
 
-        if (dirty)
+        if (ApplyArrivals(state))
             Save();
     }
 
     /// <summary>Drops mails that are no longer in the folder - deleted, or moved somewhere else.</summary>
-    private bool ApplyRemovals(List<MailItemState> state)
+    private void ApplyRemovals(List<MailItemState> state)
     {
         var present = state.Select(s => s.EntryId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -175,28 +228,38 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         var gone = _mails
             .Where(m => !present.Contains(m.EntryId) && m.ReceivedTime >= oldestObserved)
             .Select(m => m.EntryId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToList();
 
-        if (gone.Count == 0)
-            return false;
+        DropMails(gone);
+    }
+
+    /// <summary>
+    /// Forgets mails entirely - used both when Outlook no longer has them in this folder and when
+    /// the user deletes them from the board.
+    /// </summary>
+    public void DropMails(IEnumerable<string> entryIds)
+    {
+        var ids = entryIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (ids.Count == 0)
+            return;
 
         foreach (var column in Columns)
         {
             foreach (var card in column.Cards.ToList())
             {
-                if (card.RemoveMessages(gone))
+                if (card.RemoveMessages(ids))
                     column.Cards.Remove(card);
             }
         }
 
-        _mails.RemoveAll(m => gone.Contains(m.EntryId));
-        foreach (var entryId in gone)
+        _mails.RemoveAll(m => ids.Contains(m.EntryId));
+        foreach (var entryId in ids)
         {
             _knownEntryIds.Remove(entryId);
             _board.CardAssignments.Remove(entryId);
         }
 
-        return true;
+        Save();
     }
 
     /// <summary>Mirrors category and read-state edits made in Outlook onto the cards.</summary>
@@ -216,18 +279,27 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             touched.Add(mail.EntryId);
         }
 
-        if (touched.Count == 0)
+        RefreshMailState(touched);
+    }
+
+    /// <summary>
+    /// Restates the tiles holding these mails. Used both by the sync and after the board itself
+    /// changed read state, so a card repaints without waiting for the next poll.
+    /// </summary>
+    public void RefreshMailState(IEnumerable<string> entryIds)
+    {
+        var ids = entryIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (ids.Count == 0)
             return;
 
         foreach (var card in Columns.SelectMany(c => c.Cards))
-            card.RefreshState(touched);
+            card.RefreshState(ids);
     }
 
     private bool ApplyArrivals(List<MailItemState> state)
     {
         var added = false;
 
-        // Oldest first, so inserting each at the top leaves the newest on top.
         var arrivals = state
             .Where(s => s.IsMail && !_knownEntryIds.Contains(s.EntryId))
             .OrderBy(s => s.ReceivedTime);
@@ -247,34 +319,99 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             if (mail is null)
                 continue;
 
-            var columnId = DefaultColumnId();
+            var columnId = ColumnIdForArrival(mail);
             _board.CardAssignments[mail.EntryId] = columnId;
             _mails.Add(mail);
             _knownEntryIds.Add(mail.EntryId);
-            AddToTop(Columns.First(c => c.Id == columnId), mail);
+            Insert(Columns.First(c => c.Id == columnId), mail);
             added = true;
+        }
+
+        if (added)
+        {
+            _indexer.Enqueue(_mails);
+            RefreshIndexingStatus();
         }
 
         return added;
     }
 
-    /// <summary>Places a newly arrived mail at the top of its column, folding it into its conversation tile if one is already there.</summary>
-    private void AddToTop(KanbanColumnViewModel column, MailSummary mail)
+    /// <summary>
+    /// Which column a new arrival belongs in. With grouping on it follows its conversation to
+    /// wherever the user filed it - even another column - the way Outlook keeps a thread together
+    /// instead of starting a second tile back in the default column.
+    /// </summary>
+    private string ColumnIdForArrival(MailSummary mail)
+    {
+        if (!GroupByConversation)
+            return DefaultColumnId();
+
+        // Resolved from the mails rather than the tiles, because an active search may be hiding the
+        // conversation's tile while its messages are still on the board.
+        var sibling = _mails
+            .Where(m => m.ConversationKey == mail.ConversationKey)
+            .MaxBy(m => m.CreationTime);
+
+        if (sibling is null)
+            return DefaultColumnId();
+
+        // A hand-split conversation can straddle columns; follow its newest message.
+        var columnId = ColumnIdOf(sibling);
+        return Columns.Any(c => c.Id == columnId) ? columnId : DefaultColumnId();
+    }
+
+    /// <summary>
+    /// Files a newly arrived mail into its column by creation time, folding it into its conversation
+    /// tile if one is already there. Being the newest mail, it lifts that tile to the top.
+    /// </summary>
+    private void Insert(KanbanColumnViewModel column, MailSummary mail)
     {
         if (GroupByConversation &&
             column.Cards.FirstOrDefault(c => c.ConversationKey == mail.ConversationKey) is { } existing)
         {
+            // A shown conversation is kept whole - the same rule RebuildCards applies - so the new
+            // message joins it even when the search text only matches its siblings.
             existing.AddMessages([mail]);
-            var index = column.Cards.IndexOf(existing);
-            if (index > 0)
-                column.Cards.Move(index, 0);
+            MoveToSortedPosition(column, existing);
             return;
         }
 
-        column.Cards.Insert(0, new MailCardViewModel(mail, _onMailSelected));
+        if (!_search.Matches(mail, MailSearch.ParseTerms(SearchText)))
+            return; // filtered out by the active search - RebuildCards will pick it up when cleared
+
+        var card = CreateCard([mail]);
+        column.Cards.Insert(SortedIndexFor(column, card.CreationTime), card);
     }
 
-    public void Dispose() => _syncTimer.Stop();
+    private static void MoveToSortedPosition(KanbanColumnViewModel column, MailCardViewModel card)
+    {
+        var from = column.Cards.IndexOf(card);
+        var to = SortedIndexFor(column, card.CreationTime, ignoring: card);
+        if (from >= 0 && from != to)
+            column.Cards.Move(from, Math.Clamp(to, 0, column.Cards.Count - 1));
+    }
+
+    /// <summary>Where a tile of this age belongs in a column ordered newest creation time first.</summary>
+    private static int SortedIndexFor(KanbanColumnViewModel column, DateTime creationTime, MailCardViewModel? ignoring = null)
+    {
+        var index = 0;
+        foreach (var card in column.Cards)
+        {
+            if (ReferenceEquals(card, ignoring))
+                continue;
+            if (card.CreationTime <= creationTime)
+                break;
+            index++;
+        }
+
+        return index;
+    }
+
+    public void Dispose()
+    {
+        _syncTimer.Stop();
+        _indexer.Progressed -= OnIndexerProgressed;
+    }
 
     private KanbanColumnViewModel CreateColumnVm(KanbanColumnDefinition def) =>
         new(def, RemoveColumn, MoveColumn, Save, this);

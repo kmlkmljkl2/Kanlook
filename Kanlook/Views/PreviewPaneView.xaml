@@ -42,11 +42,27 @@
                     <Run Text="{Binding ReceivedTime, Mode=OneWay, StringFormat='dddd, MMM d, yyyy h:mm tt'}" />
                 </TextBlock>
 
-                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                    <Button Content="↩ Reply" Style="{StaticResource OutlineButton}" Command="{Binding ReplyCommand}" Margin="0,0,8,0" />
-                    <Button Content="↩↩ Reply All" Style="{StaticResource OutlineButton}" Command="{Binding ReplyAllCommand}" Margin="0,0,8,0" />
-                    <Button Content="➡ Forward" Style="{StaticResource OutlineButton}" Command="{Binding ForwardCommand}" />
-                </StackPanel>
+                <!-- Wraps rather than clipping, since the pane can be dragged narrow. -->
+                <WrapPanel Margin="0,12,0,0">
+                    <Button Content="↩ Reply" Style="{StaticResource OutlineButton}" Command="{Binding ReplyCommand}" Margin="0,0,8,6" />
+                    <Button Content="↩↩ Reply All" Style="{StaticResource OutlineButton}" Command="{Binding ReplyAllCommand}" Margin="0,0,8,6" />
+                    <Button Content="➡ Forward" Style="{StaticResource OutlineButton}" Command="{Binding ForwardCommand}"
+                            Margin="0,0,8,6" />
+                    <Button Content="{Binding ReadToggleLabel}" Style="{StaticResource OutlineButton}"
+                            Command="{Binding ToggleReadCommand}" Margin="0,0,8,6" />
+                    <Button Content="🗑 Delete" Command="{Binding DeleteCommand}" Margin="0,0,8,6"
+                            ToolTip="Move to Deleted Items">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </WrapPanel>
 
                 <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,12,0,0"
                               Visibility="{Binding Attachments.Count, Converter={StaticResource CountToVisibilityConverter}}">

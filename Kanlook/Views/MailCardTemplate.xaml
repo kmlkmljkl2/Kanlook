@@ -146,14 +146,30 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Icon row -->
-                <StackPanel Grid.Row="4" Orientation="Horizontal">
-                    <TextBlock Text="📎" FontSize="11" Margin="0,0,6,0"
-                               Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
-                    <TextBlock Text="⚑" FontSize="12"
-                               Foreground="{Binding Importance, Converter={StaticResource ImportanceToBrushConverter}}"
-                               ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}" />
-                </StackPanel>
+                <!-- Icon row + delete -->
+                <Grid Grid.Row="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="📎" FontSize="11" Margin="0,0,6,0"
+                                   Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="⚑" FontSize="12"
+                                   Foreground="{Binding Importance, Converter={StaticResource ImportanceToBrushConverter}}"
+                                   ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Style="{StaticResource CardActionButton}" Content="{Binding ReadToggleGlyph}"
+                                Command="{Binding ToggleReadCommand}" ToolTip="{Binding ReadToggleToolTip}"
+                                dd:DragDrop.DragSourceIgnore="True" />
+                        <Button Style="{StaticResource CardActionButton}" Content="🗑"
+                                Command="{Binding DeleteCommand}" ToolTip="{Binding DeleteToolTip}"
+                                dd:DragDrop.DragSourceIgnore="True" />
+                    </StackPanel>
+                </Grid>
 
                 <!-- Conversation expander + older messages -->
                 <StackPanel Grid.Row="5"
