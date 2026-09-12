@@ -13,13 +13,17 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
     public string ToNames { get; }
     public DateTime ReceivedTime { get; }
 
-    public ObservableCollection<AttachmentInfo> Attachments { get; } = [];
+    public ObservableCollection<AttachmentViewModel> Attachments { get; } = [];
 
     [ObservableProperty]
     private string? _htmlBody;
 
     [ObservableProperty]
     private bool _isLoading = true;
+
+    /// <summary>Set when opening an attachment failed, so the pane can say why.</summary>
+    [ObservableProperty]
+    private string? _attachmentError;
 
     private readonly Action _onClose;
     private readonly IOutlookService _outlook;
@@ -57,12 +61,25 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
             try
             {
                 foreach (var attachment in outlook.GetAttachments(summary.StoreId, summary.EntryId))
-                    Attachments.Add(attachment);
+                    Attachments.Add(new AttachmentViewModel(attachment, OpenAttachment));
             }
             catch (Exception)
             {
                 // Best-effort - a missing attachment list isn't worth failing the whole preview over.
             }
+        }
+    }
+
+    private void OpenAttachment(AttachmentInfo attachment)
+    {
+        try
+        {
+            AttachmentError = null;
+            _outlook.OpenAttachment(_summary.StoreId, _summary.EntryId, attachment.Index);
+        }
+        catch (Exception ex)
+        {
+            AttachmentError = $"Couldn't open '{attachment.FileName}': {ex.Message}";
         }
     }
 

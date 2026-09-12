@@ -37,6 +37,8 @@ public sealed class BoardStateStore
         return new AppState();
     }
 
+    public AppSettings Settings => _state.Settings;
+
     public BoardState GetOrCreateBoard(string folderKey)
     {
         if (_state.Boards.TryGetValue(folderKey, out var existing))

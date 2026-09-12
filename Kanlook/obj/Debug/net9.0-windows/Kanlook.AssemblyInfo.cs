@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Kanlook")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+371def4565e0bcb7d2303a207bede99819ee793e")]
 [assembly: System.Reflection.AssemblyProductAttribute("Kanlook")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Kanlook")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -16,16 +16,19 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
     private readonly BoardStateStore _boardStore;
     private readonly BoardState _board;
-    private readonly Action<MailCardViewModel> _onCardSelected;
+    private readonly Action<MailSummary> _onMailSelected;
     private readonly IOutlookService _outlook;
     private readonly string _storeId;
     private readonly string _folderEntryId;
     private readonly HashSet<string> _knownEntryIds = [];
+    private readonly List<MailSummary> _mails = [];
     private readonly DispatcherTimer _pollTimer;
 
     public string FolderName { get; }
 
     public ObservableCollection<KanbanColumnViewModel> Columns { get; } = [];
+
+    private bool GroupByConversation => _boardStore.Settings.GroupByConversation;
 
     public KanbanBoardViewModel(
         string folderName,
@@ -35,7 +38,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         List<MailSummary> mails,
         BoardStateStore boardStore,
         IOutlookService outlook,
-        Action<MailCardViewModel> onCardSelected)
+        Action<MailSummary> onMailSelected)
     {
         FolderName = folderName;
         _boardStore = boardStore;
@@ -43,7 +46,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _outlook = outlook;
         _storeId = storeId;
         _folderEntryId = folderEntryId;
-        _onCardSelected = onCardSelected;
+        _onMailSelected = onMailSelected;
 
         foreach (var def in _board.Columns.OrderBy(c => c.Order))
             Columns.Add(CreateColumnVm(def));
@@ -53,30 +56,60 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         var dirty = false;
         foreach (var mail in mails)
         {
-            AssignNewMail(mail, ref dirty);
+            EnsureAssigned(mail, ref dirty);
+            _mails.Add(mail);
             _knownEntryIds.Add(mail.EntryId);
         }
 
         if (dirty)
             Save();
 
+        RebuildCards();
+
         _pollTimer = new DispatcherTimer { Interval = PollInterval };
         _pollTimer.Tick += (_, _) => PollForNewMail();
         _pollTimer.Start();
     }
 
-    private void AssignNewMail(MailSummary mail, ref bool dirty)
+    private void EnsureAssigned(MailSummary mail, ref bool dirty)
     {
-        if (!_board.CardAssignments.TryGetValue(mail.EntryId, out var columnId) ||
-            Columns.All(c => c.Id != columnId))
-        {
-            columnId = DefaultColumnId();
-            _board.CardAssignments[mail.EntryId] = columnId;
-            dirty = true;
-        }
+        if (_board.CardAssignments.TryGetValue(mail.EntryId, out var columnId) &&
+            Columns.Any(c => c.Id == columnId))
+            return;
 
-        var column = Columns.First(c => c.Id == columnId);
-        column.Cards.Add(new MailCardViewModel(mail, card => _onCardSelected(card)));
+        _board.CardAssignments[mail.EntryId] = DefaultColumnId();
+        dirty = true;
+    }
+
+    private string ColumnIdOf(MailSummary mail) =>
+        _board.CardAssignments.TryGetValue(mail.EntryId, out var id) ? id : DefaultColumnId();
+
+    /// <summary>
+    /// Rebuilds every column's tiles from the mails we know about, newest first. Grouping happens
+    /// inside a column, so mails of one conversation that the user pulled apart by hand stay apart.
+    /// </summary>
+    public void RebuildCards()
+    {
+        foreach (var column in Columns)
+        {
+            column.Cards.Clear();
+
+            var mails = _mails.Where(m => ColumnIdOf(m) == column.Id);
+            if (GroupByConversation)
+            {
+                var conversations = mails
+                    .GroupBy(m => m.ConversationKey)
+                    .OrderByDescending(g => g.Max(m => m.ReceivedTime));
+
+                foreach (var conversation in conversations)
+                    column.Cards.Add(new MailCardViewModel(conversation, _onMailSelected));
+            }
+            else
+            {
+                foreach (var mail in mails.OrderByDescending(m => m.ReceivedTime))
+                    column.Cards.Add(new MailCardViewModel(mail, _onMailSelected));
+            }
+        }
     }
 
     private string DefaultColumnId() =>
@@ -109,18 +142,38 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         }
 
         var dirty = false;
-        foreach (var mail in latest.Where(m => !_knownEntryIds.Contains(m.EntryId)))
+        var arrivals = latest
+            .Where(m => !_knownEntryIds.Contains(m.EntryId))
+            .OrderBy(m => m.ReceivedTime); // oldest first, so inserting each at the top leaves the newest on top
+
+        foreach (var mail in arrivals)
         {
             var columnId = DefaultColumnId();
             _board.CardAssignments[mail.EntryId] = columnId;
-            var column = Columns.First(c => c.Id == columnId);
-            column.Cards.Add(new MailCardViewModel(mail, card => _onCardSelected(card)));
+            _mails.Add(mail);
             _knownEntryIds.Add(mail.EntryId);
+            AddToTop(Columns.First(c => c.Id == columnId), mail);
             dirty = true;
         }
 
         if (dirty)
             Save();
+    }
+
+    /// <summary>Places a newly arrived mail at the top of its column, folding it into its conversation tile if one is already there.</summary>
+    private void AddToTop(KanbanColumnViewModel column, MailSummary mail)
+    {
+        if (GroupByConversation &&
+            column.Cards.FirstOrDefault(c => c.ConversationKey == mail.ConversationKey) is { } existing)
+        {
+            existing.AddMessages([mail]);
+            var index = column.Cards.IndexOf(existing);
+            if (index > 0)
+                column.Cards.Move(index, 0);
+            return;
+        }
+
+        column.Cards.Insert(0, new MailCardViewModel(mail, _onMailSelected));
     }
 
     public void Dispose() => _pollTimer.Stop();
@@ -149,11 +202,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
         var target = Columns.Where(c => c != column).OrderBy(c => Math.Abs(c.Order - column.Order)).First();
         foreach (var card in column.Cards.ToList())
-        {
-            column.Cards.Remove(card);
-            target.Cards.Add(card);
-            _board.CardAssignments[card.Summary.EntryId] = target.Id;
-        }
+            MoveCard(card, column, target, target.Cards.Count);
 
         Columns.Remove(column);
         _board.Columns.RemoveAll(c => c.Id == column.Id);
@@ -249,10 +298,30 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         }
         else
         {
-            sourceColumn.Cards.Remove(card);
-            targetColumn.Cards.Insert(Math.Clamp(insertIndex, 0, targetColumn.Cards.Count), card);
-            _board.CardAssignments[card.Summary.EntryId] = targetColumn.Id;
+            MoveCard(card, sourceColumn, targetColumn, insertIndex);
             _boardStore.Save();
         }
+    }
+
+    /// <summary>
+    /// Moves a tile between columns, reassigning every mail on it. With grouping on, dropping onto a
+    /// column that already shows the same conversation merges the two tiles instead of duplicating it.
+    /// </summary>
+    private void MoveCard(
+        MailCardViewModel card,
+        KanbanColumnViewModel source,
+        KanbanColumnViewModel target,
+        int insertIndex)
+    {
+        source.Cards.Remove(card);
+
+        if (GroupByConversation &&
+            target.Cards.FirstOrDefault(c => c.ConversationKey == card.ConversationKey) is { } existing)
+            existing.AddMessages(card.Messages);
+        else
+            target.Cards.Insert(Math.Clamp(insertIndex, 0, target.Cards.Count), card);
+
+        foreach (var message in card.Messages)
+            _board.CardAssignments[message.EntryId] = target.Id;
     }
 }

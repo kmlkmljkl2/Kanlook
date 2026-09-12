@@ -57,8 +57,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource AppBgBrush}" BorderBrush="{StaticResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="6" Padding="8,5" Margin="0,0,6,6">
+                            <Button Style="{StaticResource AttachmentChipButton}" Command="{Binding OpenCommand}"
+                                    ToolTip="{Binding ToolTip}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="📄" FontSize="11" Margin="0,0,5,0" />
                                     <TextBlock Text="{Binding FileName}" FontSize="11.5"
@@ -66,10 +66,14 @@
                                     <TextBlock Text="{Binding SizeDisplay, StringFormat=' · {0}'}" FontSize="11"
                                                Foreground="{StaticResource TextSecondaryBrush}" />
                                 </StackPanel>
-                            </Border>
+                            </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <TextBlock Text="{Binding AttachmentError}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0"
+                           Foreground="{StaticResource DangerBrush}"
+                           Visibility="{Binding AttachmentError, Converter={StaticResource NullToVisibilityConverter}}" />
 
                 <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,12,0,0" />
             </StackPanel>

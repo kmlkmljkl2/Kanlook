@@ -1,6 +1,8 @@
+using System.Text.RegularExpressions;
+
 namespace Kanlook.Models;
 
-public sealed class MailSummary
+public sealed partial class MailSummary
 {
     public required string EntryId { get; init; }
     public required string StoreId { get; init; }
@@ -14,8 +16,29 @@ public sealed class MailSummary
     public bool HasAttachments { get; init; }
     public MailImportance Importance { get; init; } = MailImportance.Normal;
 
+    /// <summary>Outlook's own conversation id. Empty when the store/item doesn't expose one.</summary>
+    public string ConversationId { get; init; } = "";
+
+    /// <summary>Outlook's conversation topic (the subject with Re:/Fw: prefixes already stripped).</summary>
+    public string ConversationTopic { get; init; } = "";
+
     /// <summary>Lazily populated the first time the mail is previewed.</summary>
     public string? HtmlBody { get; set; }
+
+    /// <summary>
+    /// Key used to group mails into one conversation tile. Prefers Outlook's conversation id and
+    /// falls back to the reply-prefix-stripped topic so mails from stores without conversation
+    /// support (or older items) still thread together.
+    /// </summary>
+    public string ConversationKey => string.IsNullOrEmpty(ConversationId)
+        ? "topic:" + NormalizeTopic(string.IsNullOrEmpty(ConversationTopic) ? Subject : ConversationTopic)
+        : ConversationId;
+
+    private static string NormalizeTopic(string topic) =>
+        ReplyPrefixRegex().Replace(topic, "").Trim().ToLowerInvariant();
+
+    [GeneratedRegex(@"^\s*((re|aw|fw|fwd|wg|antw)\s*(\[\d+\])?\s*:\s*)+", RegexOptions.IgnoreCase)]
+    private static partial Regex ReplyPrefixRegex();
 }
 
 public enum MailImportance

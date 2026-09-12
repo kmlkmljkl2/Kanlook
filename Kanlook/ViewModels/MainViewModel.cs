@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Kanlook.Models;
 using Kanlook.Services;
 
 namespace Kanlook.ViewModels;
@@ -14,6 +15,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly BoardStateStore _boardStore = new();
 
     public ObservableCollection<MailFolderNodeVm> RootFolders { get; } = [];
+
+    public SettingsViewModel Settings { get; }
 
     [ObservableProperty]
     private MailFolderNodeVm? _selectedFolder;
@@ -36,12 +39,17 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(IOutlookService outlook)
     {
         _outlook = outlook;
+        Settings = new SettingsViewModel(_boardStore, ApplyGrouping);
 
         try
         {
             _outlook.Connect();
             foreach (var root in _outlook.BuildFolderTree())
-                RootFolders.Add(new MailFolderNodeVm(root, MoveFolder));
+            {
+                // Open each mailbox straight away so its folders are there without a click.
+                RootFolders.Add(new MailFolderNodeVm(root, MoveFolder) { IsExpanded = true });
+            }
+
             ApplyFolderOrder(RootFolders, RootOrderKey);
         }
         catch (Exception ex)
@@ -63,7 +71,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             (CurrentContent as IDisposable)?.Dispose();
             CurrentContent = value.IsSharedMailbox
-                ? new SharedFolderViewModel(value.Name, mails, ShowPreview)
+                ? new SharedFolderViewModel(value.Name, mails, _boardStore.Settings, ShowPreview)
                 : new KanbanBoardViewModel(
                     value.Name,
                     FolderKeyHelper.BuildKey(value.StoreId, value.EntryId),
@@ -122,11 +130,25 @@ public sealed partial class MainViewModel : ObservableObject
         _boardStore.SetFolderOrder(parentKey, siblings.Select(s => s.EntryId).ToList());
     }
 
-    private void ShowPreview(MailCardViewModel card)
+    private void ShowPreview(MailSummary summary)
     {
-        Preview = new PreviewPaneViewModel(card.Summary, _outlook, ClosePreview);
+        Preview = new PreviewPaneViewModel(summary, _outlook, ClosePreview);
         if (PreviewColumnWidth.Value <= 0)
             PreviewColumnWidth = new GridLength(420);
+    }
+
+    /// <summary>Re-lays out the open folder after the conversation-grouping setting was toggled.</summary>
+    private void ApplyGrouping()
+    {
+        switch (CurrentContent)
+        {
+            case KanbanBoardViewModel board:
+                board.RebuildCards();
+                break;
+            case SharedFolderViewModel shared:
+                shared.RebuildCards();
+                break;
+        }
     }
 
     [RelayCommand]

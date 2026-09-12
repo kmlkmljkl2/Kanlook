@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "VH58stjojC4=",
+  "dgSpecHash": "1oAP/vqTFQg=",
   "success": true,
-  "projectFilePath": "C:\\Users\\kevin\\RiderProjects\\WpfApp1\\Kanlook\\Kanlook.csproj",
+  "projectFilePath": "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\kevin\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.0\\communitytoolkit.mvvm.8.4.0.nupkg.sha512",
     "C:\\Users\\kevin\\.nuget\\packages\\gong-wpf-dragdrop\\3.2.1\\gong-wpf-dragdrop.3.2.1.nupkg.sha512"

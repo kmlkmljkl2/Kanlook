@@ -16,4 +16,16 @@ public partial class FolderTreeView : UserControl
         if (DataContext is MainViewModel vm)
             vm.SelectedFolder = e.NewValue as MailFolderNodeVm;
     }
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        new SettingsWindow
+        {
+            DataContext = vm.Settings,
+            Owner = Window.GetWindow(this),
+        }.ShowDialog();
+    }
 }

@@ -26,4 +26,6 @@ public sealed class AppState
 
     /// <summary>parent folder key (or the root sentinel) -&gt; ordered child EntryIds</summary>
     public Dictionary<string, List<string>> FolderOrder { get; init; } = [];
+
+    public AppSettings Settings { get; init; } = new();
 }

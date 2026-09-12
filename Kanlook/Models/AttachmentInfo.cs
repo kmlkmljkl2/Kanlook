@@ -7,6 +7,9 @@ public sealed class AttachmentInfo
     /// <summary>Precomputed friendly size (e.g. "24 KB") so views don't need a size converter.</summary>
     public required string SizeDisplay { get; init; }
 
+    /// <summary>1-based index into the mail's Outlook Attachments collection - used to re-open the attachment.</summary>
+    public required int Index { get; init; }
+
     public static string FormatBytes(long bytes)
     {
         string[] units = ["B", "KB", "MB", "GB"];

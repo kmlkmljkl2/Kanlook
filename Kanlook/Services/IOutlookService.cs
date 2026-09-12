@@ -19,6 +19,12 @@ public interface IOutlookService : IDisposable
     /// <summary>Lazily fetches attachment names/sizes for a single mail for preview.</summary>
     List<AttachmentInfo> GetAttachments(string storeId, string entryId);
 
+    /// <summary>
+    /// Extracts the attachment to a temp file and opens it with its default application.
+    /// Returns the attachment's file name.
+    /// </summary>
+    string OpenAttachment(string storeId, string entryId, int attachmentIndex);
+
     /// <summary>Opens Outlook's own Reply compose window for the given mail.</summary>
     void Reply(string storeId, string entryId);
 

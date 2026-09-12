@@ -2,12 +2,60 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:vm="clr-namespace:Kanlook.ViewModels"
                     xmlns:conv="clr-namespace:Kanlook.Converters"
-                    xmlns:beh="clr-namespace:Kanlook.Behaviors">
+                    xmlns:beh="clr-namespace:Kanlook.Behaviors"
+                    xmlns:dd="urn:gong-wpf-dragdrop">
 
     <conv:FriendlyDateConverter x:Key="FriendlyDateConverter" />
     <conv:ImportanceToBrushConverter x:Key="ImportanceToBrushConverter" />
     <conv:ImportanceToLabelConverter x:Key="ImportanceToLabelConverter" />
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+    <!-- One older message inside a conversation tile -->
+    <DataTemplate DataType="{x:Type vm:MailThreadItemViewModel}">
+        <Button Style="{StaticResource ThreadItemButton}" Command="{Binding SelectCommand}"
+                ToolTip="Open this message" dd:DragDrop.DragSourceIgnore="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Ellipse Grid.Row="0" Grid.Column="0" Width="6" Height="6" Margin="0,0,6,0"
+                         Fill="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                         Visibility="{Binding IsRead, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SenderName}" FontSize="11"
+                           Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="FontWeight" Value="Normal" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRead}" Value="False">
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
+                    <TextBlock Text="📎" FontSize="9" Margin="0,0,4,0" VerticalAlignment="Center"
+                               Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding ReceivedTime, Converter={StaticResource FriendlyDateConverter}}"
+                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Snippet}"
+                           FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+            </Grid>
+        </Button>
+    </DataTemplate>
 
     <DataTemplate DataType="{x:Type vm:MailCardViewModel}">
         <Border Style="{StaticResource MailCardBorder}" HorizontalAlignment="Stretch"
@@ -18,24 +66,22 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Subject + unread dot -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4">
-                    <Ellipse Width="7" Height="7" Fill="{StaticResource AccentBrush}" Margin="0,0,6,0"
-                             VerticalAlignment="Center">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                                <Setter Property="Visibility" Value="Visible" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsRead}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
-                    <TextBlock Text="{Binding Subject}"
+                <!-- Subject + unread dot + conversation count -->
+                <Grid Grid.Row="0" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{StaticResource AccentBrush}"
+                             Margin="0,0,6,0" VerticalAlignment="Center"
+                             Visibility="{Binding IsRead, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                    <TextBlock Grid.Column="1" Text="{Binding Subject}"
                                Foreground="{StaticResource TextPrimaryBrush}"
                                TextTrimming="CharacterEllipsis"
                                FontSize="13">
@@ -50,7 +96,17 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                </StackPanel>
+
+                    <!-- Conversation size, like Outlook's message count -->
+                    <Border Grid.Column="2" Margin="6,0,0,0" Padding="6,1" CornerRadius="9"
+                            Background="{StaticResource AppBgBrush}" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" VerticalAlignment="Center"
+                            ToolTip="Messages in this conversation"
+                            Visibility="{Binding IsConversation, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding MessageCount}" FontSize="10.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Border>
+                </Grid>
 
                 <!-- Sender + date -->
                 <Grid Grid.Row="1" Margin="0,0,0,6">
@@ -77,6 +133,44 @@
                     <TextBlock Text="⚑" FontSize="12"
                                Foreground="{Binding Importance, Converter={StaticResource ImportanceToBrushConverter}}"
                                ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}" />
+                </StackPanel>
+
+                <!-- Conversation expander + older messages -->
+                <StackPanel Grid.Row="4"
+                            Visibility="{Binding IsConversation, Converter={StaticResource BoolToVisibility}}">
+                    <Button Style="{StaticResource ThreadExpanderButton}" Command="{Binding ToggleExpandedCommand}"
+                            dd:DragDrop.DragSourceIgnore="True">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="9" Margin="0,0,5,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="▶" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                <Setter Property="Text" Value="▼" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding ExpandLabel}" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentBrush}" />
+                        </StackPanel>
+                    </Button>
+
+                    <ItemsControl ItemsSource="{Binding OlderMessages}" Margin="6,2,0,0"
+                                  HorizontalContentAlignment="Stretch"
+                                  Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}">
+                        <ItemsControl.Template>
+                            <ControlTemplate TargetType="ItemsControl">
+                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0"
+                                        Padding="7,0,0,0">
+                                    <ItemsPresenter />
+                                </Border>
+                            </ControlTemplate>
+                        </ItemsControl.Template>
+                    </ItemsControl>
                 </StackPanel>
             </Grid>
         </Border>

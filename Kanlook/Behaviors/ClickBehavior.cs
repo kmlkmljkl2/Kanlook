@@ -1,5 +1,8 @@
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Media3D;
 
 namespace Kanlook.Behaviors;
 
@@ -56,9 +59,30 @@ public static class ClickBehavior
         if (downPos is null)
             return;
 
+        // Buttons nested inside the element (e.g. a card's expander) own their clicks. Preview events
+        // tunnel downwards, so without this the outer command would run before the button's does.
+        if (OriginatesFromButton(e.OriginalSource, element))
+            return;
+
         var upPos = e.GetPosition(element);
         var moved = (upPos - downPos.Value).Length;
         if (moved <= MovementThreshold)
             GetCommand(element)?.Execute(null);
+    }
+
+    private static bool OriginatesFromButton(object? originalSource, UIElement element)
+    {
+        var current = originalSource as DependencyObject;
+        while (current is not null && !ReferenceEquals(current, element))
+        {
+            if (current is ButtonBase)
+                return true;
+
+            current = current is Visual or Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 }

@@ -1,4 +1,8 @@
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using Kanlook.Models;
 
 namespace Kanlook.Services;
@@ -136,6 +140,22 @@ public sealed class OutlookService : IOutlookService
         return result;
     }
 
+    /// <summary>
+    /// Reads an optional COM string property. Not every store/item exposes conversation properties
+    /// (very old items, some public folders), and a missing one throws rather than returning null.
+    /// </summary>
+    private static string TryGetString(Func<dynamic> get)
+    {
+        try
+        {
+            return (string?)get() ?? "";
+        }
+        catch (Exception)
+        {
+            return "";
+        }
+    }
+
     private static bool IsMailItem(dynamic item)
     {
         try
@@ -161,6 +181,8 @@ public sealed class OutlookService : IOutlookService
 
         return new MailSummary
         {
+            ConversationId = TryGetString(() => mail.ConversationID),
+            ConversationTopic = TryGetString(() => mail.ConversationTopic),
             EntryId = mail.EntryID,
             StoreId = storeId,
             Subject = string.IsNullOrEmpty(subject) ? "(no subject)" : subject,
@@ -221,7 +243,12 @@ public sealed class OutlookService : IOutlookService
                 {
                     string fileName = att.FileName ?? att.DisplayName ?? "(unnamed attachment)";
                     long size = (long)att.Size;
-                    result.Add(new AttachmentInfo { FileName = fileName, SizeDisplay = AttachmentInfo.FormatBytes(size) });
+                    result.Add(new AttachmentInfo
+                    {
+                        FileName = fileName,
+                        SizeDisplay = AttachmentInfo.FormatBytes(size),
+                        Index = (int)att.Index,
+                    });
                 }
                 finally
                 {
@@ -236,6 +263,63 @@ public sealed class OutlookService : IOutlookService
         }
 
         return result;
+    }
+
+    public string OpenAttachment(string storeId, string entryId, int attachmentIndex) =>
+        InvokeWithRetry(() => OpenAttachmentCore(storeId, entryId, attachmentIndex));
+
+    private string OpenAttachmentCore(string storeId, string entryId, int attachmentIndex)
+    {
+        EnsureConnected();
+
+        dynamic item = _ns!.GetItemFromID(entryId, storeId);
+        try
+        {
+            dynamic attachments = item.Attachments;
+            try
+            {
+                dynamic att = attachments.Item(attachmentIndex);
+                try
+                {
+                    string fileName = att.FileName ?? att.DisplayName ?? "attachment";
+                    var path = BuildCachePath(entryId, fileName);
+
+                    // Outlook can only hand an attachment over as a file, so extract it to a
+                    // per-mail cache folder and let the shell pick the right application.
+                    att.SaveAsFile(path);
+                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                    return fileName;
+                }
+                finally
+                {
+                    ReleaseCom(att);
+                }
+            }
+            finally
+            {
+                ReleaseCom(attachments);
+            }
+        }
+        finally
+        {
+            ReleaseCom(item);
+        }
+    }
+
+    /// <summary>
+    /// Stable temp path per (mail, file name), so re-opening the same attachment reuses one file
+    /// instead of littering temp, while same-named attachments of different mails stay separate.
+    /// </summary>
+    private static string BuildCachePath(string entryId, string fileName)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entryId)))[..12];
+        var safeName = string.Concat(fileName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+        if (string.IsNullOrWhiteSpace(safeName))
+            safeName = "attachment";
+
+        var dir = Path.Combine(Path.GetTempPath(), "Kanlook", hash);
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, safeName);
     }
 
     public void Reply(string storeId, string entryId) =>

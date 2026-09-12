@@ -13,10 +13,32 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="16,18,16,14">
-            <TextBlock Text="📮" FontSize="18" Margin="0,0,8,0" />
-            <TextBlock Text="Kanlook" FontSize="17" FontWeight="Bold" Foreground="White" />
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="16,18,10,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <TextBlock Text="📮" FontSize="18" Margin="0,0,8,0" />
+                <TextBlock Text="Kanlook" FontSize="17" FontWeight="Bold" Foreground="White"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <Button Grid.Column="1" Content="⚙" FontSize="15" ToolTip="Settings"
+                    VerticalAlignment="Center" Click="SettingsButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+                        <Setter Property="Foreground" Value="{StaticResource SidebarTextBrush}" />
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </Grid>
 
         <TreeView Grid.Row="1"
                   ItemsSource="{Binding RootFolders}"
