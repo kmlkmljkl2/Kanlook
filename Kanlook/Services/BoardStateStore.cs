@@ -17,7 +17,11 @@ public sealed class BoardStateStore
     public BoardStateStore()
     {
         _state = Load();
+        Annotations = new MailAnnotationStore(_state.MailAnnotations, Save);
     }
+
+    /// <summary>The user's notes and priority flags. Shared by every board and mail list.</summary>
+    public MailAnnotationStore Annotations { get; }
 
     private static AppState Load()
     {

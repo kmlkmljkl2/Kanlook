@@ -51,5 +51,11 @@ public sealed class AppState
     /// <summary>parent folder key (or the root sentinel) -&gt; ordered child EntryIds</summary>
     public Dictionary<string, List<string>> FolderOrder { get; init; } = [];
 
+    /// <summary>
+    /// entryId -&gt; the user's note and priority flag. Global rather than per board: an annotation
+    /// belongs to the mail, so it reads the same wherever the mail is shown.
+    /// </summary>
+    public Dictionary<string, MailAnnotation> MailAnnotations { get; init; } = [];
+
     public AppSettings Settings { get; init; } = new();
 }

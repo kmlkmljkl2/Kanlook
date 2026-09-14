@@ -21,6 +21,11 @@
     <Color x:Key="DangerColor">#E5566B</Color>
     <Color x:Key="HighImportanceColor">#E5566B</Color>
 
+    <!-- The user's own layer on top of Outlook's data: priority flags and notes share one amber. -->
+    <Color x:Key="PriorityColor">#E8912B</Color>
+    <Color x:Key="NoteBgColor">#FFF8E7</Color>
+    <Color x:Key="NoteBorderColor">#F0DEB9</Color>
+
     <SolidColorBrush x:Key="SidebarBgBrush" Color="{StaticResource SidebarBgColor}" />
     <SolidColorBrush x:Key="SidebarBgHoverBrush" Color="{StaticResource SidebarBgHoverColor}" />
     <SolidColorBrush x:Key="SidebarSelectedBrush" Color="{StaticResource SidebarSelectedColor}" />
@@ -37,5 +42,9 @@
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="HighImportanceBrush" Color="{StaticResource HighImportanceColor}" />
+
+    <SolidColorBrush x:Key="PriorityBrush" Color="{StaticResource PriorityColor}" />
+    <SolidColorBrush x:Key="NoteBgBrush" Color="{StaticResource NoteBgColor}" />
+    <SolidColorBrush x:Key="NoteBorderBrush" Color="{StaticResource NoteBorderColor}" />
 
 </ResourceDictionary>

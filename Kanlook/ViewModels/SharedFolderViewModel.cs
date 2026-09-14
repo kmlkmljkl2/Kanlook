@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Kanlook.Models;
+using Kanlook.Services;
 
 namespace Kanlook.ViewModels;
 
@@ -11,45 +12,39 @@ public sealed partial class SharedFolderViewModel : ObservableObject
 
     private readonly List<MailSummary> _mails;
     private readonly AppSettings _settings;
-    private readonly Action<MailSummary> _onMailSelected;
-    private readonly Action<MailCardViewModel> _onCardDelete;
-    private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
+    private readonly MailCardContext _cardContext;
 
     public SharedFolderViewModel(
         string folderName,
         List<MailSummary> mails,
-        AppSettings settings,
+        BoardStateStore boardStore,
         Action<MailSummary> onMailSelected,
         Action<MailCardViewModel> onCardDelete,
         Action<IReadOnlyList<MailSummary>, bool> onSetRead)
     {
         FolderName = folderName;
         _mails = mails;
-        _settings = settings;
-        _onMailSelected = onMailSelected;
-        _onCardDelete = onCardDelete;
-        _onSetRead = onSetRead;
+        _settings = boardStore.Settings;
+        _cardContext = new MailCardContext
+        {
+            OnSelect = onMailSelected,
+            OnDelete = onCardDelete,
+            OnSetRead = onSetRead,
+            Annotations = boardStore.Annotations,
+            OnPriorityChanged = card => MailCardOrder.Reposition(Cards, card, _settings.PinHighPriority),
+        };
         RebuildCards();
     }
 
     public void RebuildCards()
     {
+        var cards = _settings.GroupByConversation
+            ? _mails.GroupBy(m => m.ConversationKey).Select(g => new MailCardViewModel(g, _cardContext))
+            : _mails.Select(m => new MailCardViewModel(m, _cardContext));
+
         Cards.Clear();
-
-        if (_settings.GroupByConversation)
-        {
-            var conversations = _mails
-                .GroupBy(m => m.ConversationKey)
-                .OrderByDescending(g => g.Max(m => m.CreationTime));
-
-            foreach (var conversation in conversations)
-                Cards.Add(new MailCardViewModel(conversation, _onMailSelected, _onCardDelete, _onSetRead));
-        }
-        else
-        {
-            foreach (var mail in _mails.OrderByDescending(m => m.CreationTime))
-                Cards.Add(new MailCardViewModel(mail, _onMailSelected, _onCardDelete, _onSetRead));
-        }
+        foreach (var card in MailCardOrder.Sort(cards, _settings.PinHighPriority))
+            Cards.Add(card);
     }
 
     /// <summary>Restates the cards holding these mails after their read state changed.</summary>
@@ -70,6 +65,7 @@ public sealed partial class SharedFolderViewModel : ObservableObject
             return;
 
         _mails.RemoveAll(m => ids.Contains(m.EntryId));
+        _cardContext.Annotations.Forget(ids);
 
         foreach (var card in Cards.ToList())
         {

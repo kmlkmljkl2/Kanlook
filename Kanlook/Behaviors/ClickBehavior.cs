@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -59,9 +60,10 @@ public static class ClickBehavior
         if (downPos is null)
             return;
 
-        // Buttons nested inside the element (e.g. a card's expander) own their clicks. Preview events
-        // tunnel downwards, so without this the outer command would run before the button's does.
-        if (OriginatesFromButton(e.OriginalSource, element))
+        // Buttons and text fields nested inside the element (a card's expander, its note editor) own
+        // their clicks. Preview events tunnel downwards, so without this the outer command would run
+        // first - placing a caret in the note would also open the mail.
+        if (OriginatesFromOwnClick(e.OriginalSource, element))
             return;
 
         var upPos = e.GetPosition(element);
@@ -70,12 +72,12 @@ public static class ClickBehavior
             GetCommand(element)?.Execute(null);
     }
 
-    private static bool OriginatesFromButton(object? originalSource, UIElement element)
+    private static bool OriginatesFromOwnClick(object? originalSource, UIElement element)
     {
         var current = originalSource as DependencyObject;
         while (current is not null && !ReferenceEquals(current, element))
         {
-            if (current is ButtonBase)
+            if (current is ButtonBase or TextBoxBase)
                 return true;
 
             current = current is Visual or Visual3D

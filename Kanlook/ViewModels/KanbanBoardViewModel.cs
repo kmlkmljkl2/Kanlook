@@ -21,9 +21,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
     private readonly BoardStateStore _boardStore;
     private readonly BoardState _board;
-    private readonly Action<MailSummary> _onMailSelected;
-    private readonly Action<MailCardViewModel> _onCardDelete;
-    private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
+    private readonly MailCardContext _cardContext;
     private readonly MailSearch _search;
     private readonly AttachmentIndexer _indexer;
     private readonly SentMailIndex _sentMail;
@@ -47,6 +45,9 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
     private bool GroupByConversation => _boardStore.Settings.GroupByConversation;
 
+    /// <summary>Whether the user wants their high-priority cards held at the top of their column.</summary>
+    private bool PinHighPriority => _boardStore.Settings.PinHighPriority;
+
     public KanbanBoardViewModel(
         string folderName,
         string folderKey,
@@ -68,9 +69,14 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _outlook = outlook;
         _storeId = storeId;
         _folderEntryId = folderEntryId;
-        _onMailSelected = onMailSelected;
-        _onCardDelete = onCardDelete;
-        _onSetRead = onSetRead;
+        _cardContext = new MailCardContext
+        {
+            OnSelect = onMailSelected,
+            OnDelete = onCardDelete,
+            OnSetRead = onSetRead,
+            Annotations = boardStore.Annotations,
+            OnPriorityChanged = OnCardPriorityChanged,
+        };
         _search = new MailSearch(attachmentIndex);
         _indexer = indexer;
         _sentMail = sentMail;
@@ -167,9 +173,9 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _board.CardAssignments.TryGetValue(mail.EntryId, out var id) ? id : DefaultColumnId();
 
     /// <summary>
-    /// Rebuilds every column's tiles from the mails we know about, newest creation time first, and
-    /// filtered by the search box. Grouping happens inside a column, so mails of one conversation
-    /// that the user pulled apart by hand stay apart.
+    /// Rebuilds every column's tiles from the mails we know about, in board order, and filtered by
+    /// the search box. Grouping happens inside a column, so mails of one conversation that the user
+    /// pulled apart by hand stay apart.
     /// </summary>
     public void RebuildCards()
     {
@@ -180,26 +186,18 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             column.Cards.Clear();
 
             var mails = _mails.Where(m => ColumnIdOf(m) == column.Id);
-            if (GroupByConversation)
-            {
+            var cards = GroupByConversation
                 // A conversation is kept whole when any of its messages matches.
-                var conversations = mails
+                ? mails
                     .GroupBy(m => m.ConversationKey)
                     .Where(g => g.Any(m => _search.Matches(m, terms)))
-                    .OrderByDescending(g => g.Max(m => m.CreationTime));
-
-                foreach (var conversation in conversations)
-                    column.Cards.Add(CreateCard(conversation));
-            }
-            else
-            {
-                var matching = mails
+                    .Select(CreateCard)
+                : mails
                     .Where(m => _search.Matches(m, terms))
-                    .OrderByDescending(m => m.CreationTime);
+                    .Select(m => CreateCard([m]));
 
-                foreach (var mail in matching)
-                    column.Cards.Add(CreateCard([mail]));
-            }
+            foreach (var card in MailCardOrder.Sort(cards, PinHighPriority))
+                column.Cards.Add(card);
         }
 
         RefreshSentHistory();
@@ -217,8 +215,20 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             card.SetSentMessages(GroupByConversation ? _sentMail.ForConversation(card.ConversationKey) : []);
     }
 
-    private MailCardViewModel CreateCard(IEnumerable<MailSummary> messages) =>
-        new(messages, _onMailSelected, _onCardDelete, _onSetRead);
+    private MailCardViewModel CreateCard(IEnumerable<MailSummary> messages) => new(messages, _cardContext);
+
+    /// <summary>
+    /// Lifts a card the user just flagged to the top of its column, or lets it fall back to its place
+    /// by date when the flag came off. A no-op while pinning is switched off.
+    /// </summary>
+    private void OnCardPriorityChanged(MailCardViewModel card)
+    {
+        if (!PinHighPriority)
+            return;
+
+        if (Columns.FirstOrDefault(c => c.Cards.Contains(card)) is { } column)
+            MoveToSortedPosition(column, card);
+    }
 
     private string DefaultColumnId() =>
         _board.DefaultColumnId is { } id && Columns.Any(c => c.Id == id) ? id : Columns[0].Id;
@@ -308,7 +318,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         {
             foreach (var card in column.Cards.Where(c => conversationKeys.Contains(c.ConversationKey)).ToList())
             {
-                MoveCard(card, column, target, SortedIndexFor(target, card.CreationTime));
+                MoveCard(card, column, target, SortedIndexFor(target, card));
 
                 // A merge into a tile already there leaves that tile where it was - re-sort it.
                 if (target.Cards.FirstOrDefault(c => c.ConversationKey == card.ConversationKey) is { } placed)
@@ -400,6 +410,9 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             _knownEntryIds.Remove(entryId);
             _board.CardAssignments.Remove(entryId);
         }
+
+        // The mail is gone for good - its note and flag can't be reached again either way.
+        _boardStore.Annotations.Forget(ids);
 
         Save();
     }
@@ -526,32 +539,14 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             return; // filtered out by the active search - RebuildCards will pick it up when cleared
 
         var card = CreateCard([mail]);
-        column.Cards.Insert(SortedIndexFor(column, card.CreationTime), card);
+        column.Cards.Insert(SortedIndexFor(column, card), card);
     }
 
-    private static void MoveToSortedPosition(KanbanColumnViewModel column, MailCardViewModel card)
-    {
-        var from = column.Cards.IndexOf(card);
-        var to = SortedIndexFor(column, card.CreationTime, ignoring: card);
-        if (from >= 0 && from != to)
-            column.Cards.Move(from, Math.Clamp(to, 0, column.Cards.Count - 1));
-    }
+    private void MoveToSortedPosition(KanbanColumnViewModel column, MailCardViewModel card) =>
+        MailCardOrder.Reposition(column.Cards, card, PinHighPriority);
 
-    /// <summary>Where a tile of this age belongs in a column ordered newest creation time first.</summary>
-    private static int SortedIndexFor(KanbanColumnViewModel column, DateTime creationTime, MailCardViewModel? ignoring = null)
-    {
-        var index = 0;
-        foreach (var card in column.Cards)
-        {
-            if (ReferenceEquals(card, ignoring))
-                continue;
-            if (card.CreationTime <= creationTime)
-                break;
-            index++;
-        }
-
-        return index;
-    }
+    private int SortedIndexFor(KanbanColumnViewModel column, MailCardViewModel card) =>
+        MailCardOrder.IndexFor(column.Cards, card, PinHighPriority);
 
     public void Dispose()
     {

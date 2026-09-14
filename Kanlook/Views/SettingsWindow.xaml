@@ -31,6 +31,17 @@
                     <TextBlock Text="Show one card per conversation instead of one per mail. Cards can be expanded to reach older messages in the thread."
                                FontSize="11.5" TextWrapping="Wrap" Margin="22,4,0,0"
                                Foreground="{StaticResource TextSecondaryBrush}" />
+
+                    <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,14,0,14" />
+
+                    <CheckBox IsChecked="{Binding PinHighPriority}" Cursor="Hand"
+                              Foreground="{StaticResource TextPrimaryBrush}">
+                        <TextBlock Text="Pin high priority to the top" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                    </CheckBox>
+                    <TextBlock Text="Hold the cards you flagged high priority above the rest of their column. Turn this off to keep every card in date order."
+                               FontSize="11.5" TextWrapping="Wrap" Margin="22,4,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
 

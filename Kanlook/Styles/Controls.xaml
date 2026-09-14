@@ -255,6 +255,83 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Priority toggle. Unlike its neighbours it stays visible once the card is flagged. -->
+    <Style x:Key="CardPriorityButton" TargetType="Button" BasedOn="{StaticResource CardActionButton}">
+        <Setter Property="FontSize" Value="12" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
+                <Setter Property="Opacity" Value="1" />
+                <Setter Property="Foreground" Value="{StaticResource PriorityBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Note toggle. Stays visible while the card carries a note, so the note can be reopened. -->
+    <Style x:Key="CardNoteToggleButton" TargetType="Button" BasedOn="{StaticResource CardActionButton}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding HasComment}" Value="True">
+                <Setter Property="Opacity" Value="1" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- The note itself: a quiet block on the card that opens the editor when clicked. -->
+    <Style x:Key="CardNoteButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Visibility" Value="Collapsed" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{StaticResource NoteBgBrush}"
+                            BorderBrush="{StaticResource NoteBorderBrush}" BorderThickness="1"
+                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="2" CornerRadius="1" Margin="0,1,7,1"
+                                    Background="{StaticResource PriorityBrush}" />
+                            <ContentPresenter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource PriorityBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <!-- Hidden while the editor has taken its place. -->
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding HasComment}" Value="True" />
+                    <Condition Binding="{Binding IsEditingComment}" Value="False" />
+                </MultiDataTrigger.Conditions>
+                <Setter Property="Visibility" Value="Visible" />
+            </MultiDataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- The note editor's text area -->
+    <Style x:Key="CardNoteTextBox" TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource PriorityBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="6,5" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="MinHeight" Value="52" />
+        <Setter Property="MaxHeight" Value="120" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+
     <!-- Mail card -->
     <Style x:Key="MailCardBorder" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
@@ -270,6 +347,10 @@
             </Setter.Value>
         </Setter>
         <Style.Triggers>
+            <!-- A flagged card is outlined in the priority colour. Hover still wins - it comes after. -->
+            <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
+                <Setter Property="BorderBrush" Value="{StaticResource PriorityBrush}" />
+            </DataTrigger>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
             </Trigger>

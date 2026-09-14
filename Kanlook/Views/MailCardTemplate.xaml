@@ -74,6 +74,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Subject + unread dot + conversation count -->
@@ -152,8 +153,44 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Icon row + delete -->
-                <Grid Grid.Row="4">
+                <!-- The user's note: shown as a block, swapped for an editor while being changed -->
+                <Grid Grid.Row="4" Margin="0,0,0,2">
+                    <Button Style="{StaticResource CardNoteButton}" Command="{Binding BeginEditCommentCommand}"
+                            ToolTip="Edit note" dd:DragDrop.DragSourceIgnore="True">
+                        <TextBlock Text="{Binding Comment}" FontSize="11.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                    </Button>
+
+                    <StackPanel Visibility="{Binding IsEditingComment, Converter={StaticResource BoolToVisibility}}"
+                                dd:DragDrop.DragSourceIgnore="True">
+                        <TextBox Style="{StaticResource CardNoteTextBox}"
+                                 Text="{Binding CommentDraft, UpdateSourceTrigger=PropertyChanged}"
+                                 beh:FocusBehavior.FocusWhenVisible="True"
+                                 ToolTip="Ctrl+Enter saves, Esc discards">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Return" Modifiers="Control" Command="{Binding CommitCommentCommand}" />
+                                <KeyBinding Key="Escape" Command="{Binding CancelEditCommentCommand}" />
+                            </TextBox.InputBindings>
+                        </TextBox>
+
+                        <Grid Margin="0,5,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="Remove" Style="{StaticResource FlatButton}"
+                                    FontSize="11" Padding="4,2" ToolTip="Delete this note"
+                                    Command="{Binding RemoveCommentCommand}"
+                                    Visibility="{Binding HasComment, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Grid.Column="2" Content="Save" Style="{StaticResource AccentButton}"
+                                    FontSize="11" Padding="10,4" Command="{Binding CommitCommentCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Icon row + actions -->
+                <Grid Grid.Row="5" Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -168,6 +205,25 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Style="{StaticResource CardPriorityButton}"
+                                Command="{Binding TogglePriorityCommand}" ToolTip="{Binding PriorityToolTip}"
+                                dd:DragDrop.DragSourceIgnore="True">
+                            <TextBlock>
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="☆" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
+                                                <Setter Property="Text" Value="★" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Button>
+                        <Button Style="{StaticResource CardNoteToggleButton}" Content="💬"
+                                Command="{Binding BeginEditCommentCommand}" ToolTip="{Binding CommentToolTip}"
+                                dd:DragDrop.DragSourceIgnore="True" />
                         <Button Style="{StaticResource CardActionButton}" Content="{Binding ReadToggleGlyph}"
                                 Command="{Binding ToggleReadCommand}" ToolTip="{Binding ReadToggleToolTip}"
                                 dd:DragDrop.DragSourceIgnore="True" />
@@ -178,7 +234,7 @@
                 </Grid>
 
                 <!-- Conversation expander + older messages -->
-                <StackPanel Grid.Row="5"
+                <StackPanel Grid.Row="6"
                             Visibility="{Binding IsConversation, Converter={StaticResource BoolToVisibility}}">
                     <Button Style="{StaticResource ThreadExpanderButton}" Command="{Binding ToggleExpandedCommand}"
                             dd:DragDrop.DragSourceIgnore="True">

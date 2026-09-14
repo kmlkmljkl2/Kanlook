@@ -49,7 +49,7 @@ public sealed partial class MainViewModel : ObservableObject
         _outlook = outlook;
         _indexer = new AttachmentIndexer(outlook, _attachmentIndex);
         _sentMail = new SentMailIndex(outlook);
-        Settings = new SettingsViewModel(_boardStore, ApplyGrouping);
+        Settings = new SettingsViewModel(_boardStore, RelayoutCurrentFolder);
 
         try
         {
@@ -83,7 +83,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             (CurrentContent as IDisposable)?.Dispose();
             CurrentContent = value.IsSharedMailbox
-                ? new SharedFolderViewModel(value.Name, mails, _boardStore.Settings, ShowPreview, DeleteCard, SetRead)
+                ? new SharedFolderViewModel(value.Name, mails, _boardStore, ShowPreview, DeleteCard, SetRead)
                 : new KanbanBoardViewModel(
                     value.Name,
                     FolderKeyHelper.BuildKey(value.StoreId, value.EntryId),
@@ -232,8 +232,8 @@ public sealed partial class MainViewModel : ObservableObject
             Preview.RefreshReadState();
     }
 
-    /// <summary>Re-lays out the open folder after the conversation-grouping setting was toggled.</summary>
-    private void ApplyGrouping()
+    /// <summary>Re-lays out the open folder after a setting changed how its cards group or sort.</summary>
+    private void RelayoutCurrentFolder()
     {
         switch (CurrentContent)
         {

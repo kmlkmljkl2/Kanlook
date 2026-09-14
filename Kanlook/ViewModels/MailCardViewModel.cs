@@ -12,9 +12,7 @@ namespace Kanlook.ViewModels;
 /// </summary>
 public sealed partial class MailCardViewModel : ObservableObject
 {
-    private readonly Action<MailSummary> _onSelect;
-    private readonly Action<MailCardViewModel> _onDelete;
-    private readonly Action<IReadOnlyList<MailSummary>, bool> _onSetRead;
+    private readonly MailCardContext _context;
     private readonly List<MailSummary> _messages;
 
     /// <summary>
@@ -40,28 +38,26 @@ public sealed partial class MailCardViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ExpandLabel))]
     private bool _isExpanded;
 
-    public MailCardViewModel(
-        MailSummary summary,
-        Action<MailSummary> onSelect,
-        Action<MailCardViewModel> onDelete,
-        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
-        : this([summary], onSelect, onDelete, onSetRead)
+    /// <summary>Swaps the note for an editable text box. The note itself only changes on commit.</summary>
+    [ObservableProperty]
+    private bool _isEditingComment;
+
+    /// <summary>What the note editor holds. Written back to the store by <see cref="CommitComment"/>.</summary>
+    [ObservableProperty]
+    private string _commentDraft = "";
+
+    public MailCardViewModel(MailSummary summary, MailCardContext context)
+        : this([summary], context)
     {
     }
 
-    public MailCardViewModel(
-        IEnumerable<MailSummary> messages,
-        Action<MailSummary> onSelect,
-        Action<MailCardViewModel> onDelete,
-        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
+    public MailCardViewModel(IEnumerable<MailSummary> messages, MailCardContext context)
     {
         _messages = [.. messages.OrderByDescending(m => m.CreationTime)];
         if (_messages.Count == 0)
             throw new ArgumentException("A card needs at least one message.", nameof(messages));
 
-        _onSelect = onSelect;
-        _onDelete = onDelete;
-        _onSetRead = onSetRead;
+        _context = context;
         RebuildProjections();
     }
 
@@ -100,6 +96,29 @@ public sealed partial class MailCardViewModel : ObservableObject
     };
 
     public bool HasCategories => Categories.Count > 0;
+
+    /// <summary>
+    /// The user's own priority, not the sender's. A conversation counts as high priority as soon as
+    /// one of its messages is flagged - the same rule the attachment and importance badges follow.
+    /// </summary>
+    public bool IsHighPriority => _messages.Any(m => _context.Annotations.IsHighPriority(m.EntryId));
+
+    public string PriorityToolTip => IsHighPriority
+        ? "High priority - click to clear"
+        : "Mark as high priority";
+
+    /// <summary>
+    /// Which message the note is filed under. A note belongs to a mail rather than to the tile, so a
+    /// conversation keeps the note it was given even once a newer reply takes over the tile's face.
+    /// </summary>
+    private MailSummary CommentTarget =>
+        _messages.FirstOrDefault(m => _context.Annotations.CommentFor(m.EntryId).Length > 0) ?? Summary;
+
+    public string Comment => _context.Annotations.CommentFor(CommentTarget.EntryId);
+
+    public bool HasComment => Comment.Length > 0;
+
+    public string CommentToolTip => HasComment ? "Edit note" : "Add a note";
 
     /// <summary>The badge count, which - like Outlook's - includes the user's own replies.</summary>
     public int MessageCount => _messages.Count + _sent.Count;
@@ -189,7 +208,7 @@ public sealed partial class MailCardViewModel : ObservableObject
             .OrderByDescending(entry => entry.Message.CreationTime);
 
         foreach (var entry in history)
-            OlderMessages.Add(new MailThreadItemViewModel(entry.Message, entry.IsSent, _onSelect));
+            OlderMessages.Add(new MailThreadItemViewModel(entry.Message, entry.IsSent, _context.OnSelect));
 
         // Only the board's own mail contributes categories - a reply's are the user's own doing.
         Categories.Clear();
@@ -217,20 +236,73 @@ public sealed partial class MailCardViewModel : ObservableObject
         OnPropertyChanged(nameof(MessageCount));
         OnPropertyChanged(nameof(IsConversation));
         OnPropertyChanged(nameof(ExpandLabel));
+        NotifyAnnotationChanged();
+    }
+
+    /// <summary>Both annotations are read across the tile's messages, so a changed set restates them.</summary>
+    private void NotifyAnnotationChanged()
+    {
+        OnPropertyChanged(nameof(IsHighPriority));
+        OnPropertyChanged(nameof(PriorityToolTip));
+        OnPropertyChanged(nameof(Comment));
+        OnPropertyChanged(nameof(HasComment));
+        OnPropertyChanged(nameof(CommentToolTip));
     }
 
     [RelayCommand]
-    private void Select() => _onSelect(Summary);
+    private void Select() => _context.OnSelect(Summary);
 
     [RelayCommand]
-    private void Delete() => _onDelete(this);
+    private void Delete() => _context.OnDelete(this);
+
+    /// <summary>
+    /// Flips the user's priority flag. Like the read toggle it carries the whole thread, so a
+    /// conversation is either flagged or not rather than partly both.
+    /// </summary>
+    [RelayCommand]
+    private void TogglePriority()
+    {
+        if (!_context.Annotations.SetHighPriority(_messages.Select(m => m.EntryId), !IsHighPriority))
+            return;
+
+        NotifyAnnotationChanged();
+        _context.OnPriorityChanged?.Invoke(this);
+    }
+
+    [RelayCommand]
+    private void BeginEditComment()
+    {
+        CommentDraft = Comment;
+        IsEditingComment = true;
+    }
+
+    [RelayCommand]
+    private void CommitComment()
+    {
+        if (_context.Annotations.SetComment(CommentTarget.EntryId, CommentDraft))
+            NotifyAnnotationChanged();
+
+        IsEditingComment = false;
+    }
+
+    [RelayCommand]
+    private void CancelEditComment() => IsEditingComment = false;
+
+    /// <summary>Clears the note outright, so it doesn't take an edit-select-all-delete to get rid of.</summary>
+    [RelayCommand]
+    private void RemoveComment()
+    {
+        IsEditingComment = false;
+        if (_context.Annotations.SetComment(CommentTarget.EntryId, ""))
+            NotifyAnnotationChanged();
+    }
 
     /// <summary>
     /// Flips the tile's read state. A conversation tile is read only once every message on it is, so
     /// the toggle carries the whole thread with it rather than just the newest message.
     /// </summary>
     [RelayCommand]
-    private void ToggleRead() => _onSetRead(_messages, !IsRead);
+    private void ToggleRead() => _context.OnSetRead(_messages, !IsRead);
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
