@@ -12,7 +12,7 @@ public sealed partial class MainViewModel : ObservableObject
     private const string RootOrderKey = "__root__";
 
     private readonly IOutlookService _outlook;
-    private readonly BoardStateStore _boardStore = new();
+    private readonly BoardStateStore _boardStore;
     private readonly AttachmentIndex _attachmentIndex = new();
     private readonly AttachmentIndexer _indexer;
 
@@ -41,15 +41,16 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string? _connectionErrorMessage;
 
-    [ObservableProperty]
-    private bool _isLoadingFolder;
-
-    public MainViewModel(IOutlookService outlook)
+    public MainViewModel(IOutlookService outlook, BoardStateStore boardStore)
     {
         _outlook = outlook;
+        _boardStore = boardStore;
         _indexer = new AttachmentIndexer(outlook, _attachmentIndex);
         _sentMail = new SentMailIndex(outlook);
         Settings = new SettingsViewModel(_boardStore, RelayoutCurrentFolder);
+
+        // Before anything is shown, so the first frame is already in the right colours.
+        ThemeManager.Apply(_boardStore.Settings.Theme);
 
         try
         {
@@ -76,14 +77,15 @@ public sealed partial class MainViewModel : ObservableObject
         if (value is null)
             return;
 
-        IsLoadingFolder = true;
         try
         {
             var mails = _outlook.GetMailSummaries(value.StoreId, value.EntryId);
 
+            var actions = new MailCardActions(ShowPreview, DeleteCard, SetRead, OnCardAnnotationsChanged);
+
             (CurrentContent as IDisposable)?.Dispose();
             CurrentContent = value.IsSharedMailbox
-                ? new SharedFolderViewModel(value.Name, mails, _boardStore, ShowPreview, DeleteCard, SetRead)
+                ? new SharedFolderViewModel(value.Name, mails, _boardStore, actions)
                 : new KanbanBoardViewModel(
                     value.Name,
                     FolderKeyHelper.BuildKey(value.StoreId, value.EntryId),
@@ -95,17 +97,11 @@ public sealed partial class MainViewModel : ObservableObject
                     _attachmentIndex,
                     _indexer,
                     _sentMail,
-                    ShowPreview,
-                    DeleteCard,
-                    SetRead);
+                    actions);
         }
         catch (Exception ex)
         {
             ConnectionErrorMessage = $"Couldn't load folder '{value.Name}': {ex.Message}";
-        }
-        finally
-        {
-            IsLoadingFolder = false;
         }
     }
 
@@ -149,9 +145,41 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void ShowPreview(MailSummary summary)
     {
-        Preview = new PreviewPaneViewModel(summary, _outlook, ClosePreview, DeleteMails, SetRead);
+        Preview = new PreviewPaneViewModel(
+            summary,
+            _outlook,
+            _boardStore.Annotations,
+            ClosePreview,
+            DeleteMails,
+            SetRead,
+            OnPreviewAnnotationsChanged);
+
         if (PreviewColumnWidth.Value <= 0)
             PreviewColumnWidth = new GridLength(420);
+    }
+
+    /// <summary>
+    /// A note or flag set in the reading pane has to reach the card behind it - including its place
+    /// in the column, which priority pinning may have just changed.
+    /// </summary>
+    private void OnPreviewAnnotationsChanged(string entryId)
+    {
+        switch (CurrentContent)
+        {
+            case KanbanBoardViewModel board:
+                board.RefreshAnnotations(entryId);
+                break;
+            case SharedFolderViewModel shared:
+                shared.RefreshAnnotations(entryId);
+                break;
+        }
+    }
+
+    /// <summary>And the other way round: a card's note reaches the reading pane showing that mail.</summary>
+    private void OnCardAnnotationsChanged(MailCardViewModel card)
+    {
+        if (Preview is { } preview && card.Messages.Any(m => m.EntryId == preview.EntryId))
+            preview.RefreshAnnotations();
     }
 
     private void DeleteCard(MailCardViewModel card) => DeleteMails(card.Messages);
@@ -252,6 +280,10 @@ public sealed partial class MainViewModel : ObservableObject
         Preview = null;
         PreviewColumnWidth = new GridLength(0);
     }
+
+    /// <summary>Puts the error banner away. The next failure brings it back with its own message.</summary>
+    [RelayCommand]
+    private void DismissError() => ConnectionErrorMessage = null;
 
     public void Shutdown()
     {

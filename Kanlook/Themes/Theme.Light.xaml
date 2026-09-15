@@ -1,0 +1,49 @@
+<!--
+    Light theme. Theme.Dark.xaml defines exactly the same keys - ThemeManager checks that on every
+    switch rather than letting a missing brush quietly fall back to nothing.
+
+    Everything outside this folder reaches these brushes with DynamicResource, which is what lets a
+    theme switch repaint views that are already on screen: the dictionary is swapped wholesale, and
+    brushes loaded from XAML are frozen, so recolouring them in place is not an option.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Sidebar: dark in both themes, a shade deeper in the dark one -->
+    <SolidColorBrush x:Key="SidebarBgBrush" Color="#1B1F2E" />
+    <SolidColorBrush x:Key="SidebarBgHoverBrush" Color="#272C3F" />
+    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="#3A6FF7" />
+    <SolidColorBrush x:Key="SidebarBorderBrush" Color="#12151F" />
+    <SolidColorBrush x:Key="SidebarTextBrush" Color="#C9CEE2" />
+    <SolidColorBrush x:Key="SidebarTextMutedBrush" Color="#7A8099" />
+
+    <!-- Content surfaces -->
+    <SolidColorBrush x:Key="AppBgBrush" Color="#F2F4F9" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F7F8FC" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#E4E7F0" />
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="#D2D7E5" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1F2E" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#6E7590" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#9AA0B5" />
+
+    <!-- Accent and status -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#3A6FF7" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#2E5CDB" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#E7EEFE" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#E0455C" />
+    <SolidColorBrush x:Key="HighImportanceBrush" Color="#E0455C" />
+    <SolidColorBrush x:Key="LowImportanceBrush" Color="#9AA0B5" />
+
+    <!-- The user's own layer on top of Outlook's data: priority flags and notes share one amber -->
+    <SolidColorBrush x:Key="PriorityBrush" Color="#DF8A17" />
+    <SolidColorBrush x:Key="NoteBgBrush" Color="#FFF8E7" />
+    <SolidColorBrush x:Key="NoteBorderBrush" Color="#EFDCB4" />
+
+    <!-- Hover and press overlays for buttons with no background of their own -->
+    <SolidColorBrush x:Key="HoverOverlayBrush" Color="#14000000" />
+    <SolidColorBrush x:Key="PressOverlayBrush" Color="#22000000" />
+
+</ResourceDictionary>

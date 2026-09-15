@@ -4,49 +4,69 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Kanlook.ViewModels"
+        xmlns:models="clr-namespace:Kanlook.Models"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
-        Title="Kanlook — Settings" Width="440" SizeToContent="Height"
+        Title="Kanlook — Settings" Width="460" SizeToContent="Height"
         ResizeMode="NoResize" ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner">
 
-    <Border Background="{StaticResource AppBgBrush}" Padding="22,20">
-        <StackPanel>
-            <TextBlock Text="Settings" FontSize="18" FontWeight="Bold"
-                       Foreground="{StaticResource TextPrimaryBrush}" />
+    <Border Background="{DynamicResource AppBgBrush}">
+        <StackPanel Margin="24,22,24,0">
+            <TextBlock Text="Settings" FontSize="19" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
             <TextBlock Text="Changes apply right away and are remembered between sessions."
-                       FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,16" />
+                       Style="{StaticResource PageSubtitle}" Margin="0,5,0,20" />
 
-            <TextBlock Text="MAIL LIST" FontSize="10.5" FontWeight="SemiBold" Margin="0,0,0,8"
-                       Foreground="{StaticResource TextSecondaryBrush}" />
+            <TextBlock Text="APPEARANCE" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
 
-            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="10" Padding="14,12">
+            <Border Style="{StaticResource SettingsCard}">
                 <StackPanel>
-                    <CheckBox IsChecked="{Binding GroupByConversation}" Cursor="Hand"
-                              Foreground="{StaticResource TextPrimaryBrush}">
-                        <TextBlock Text="Group mails by conversation" FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
-                    </CheckBox>
-                    <TextBlock Text="Show one card per conversation instead of one per mail. Cards can be expanded to reach older messages in the thread."
-                               FontSize="11.5" TextWrapping="Wrap" Margin="22,4,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="Theme" Style="{StaticResource FieldLabel}" FontSize="13" />
+                    <TextBlock Text="Following Windows switches with the system's app colour mode, without a restart."
+                               Style="{StaticResource Caption}" Margin="0,4,0,10" />
 
-                    <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,14,0,14" />
-
-                    <CheckBox IsChecked="{Binding PinHighPriority}" Cursor="Hand"
-                              Foreground="{StaticResource TextPrimaryBrush}">
-                        <TextBlock Text="Pin high priority to the top" FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
-                    </CheckBox>
-                    <TextBlock Text="Hold the cards you flagged high priority above the rest of their column. Turn this off to keep every card in date order."
-                               FontSize="11.5" TextWrapping="Wrap" Margin="22,4,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="2" SnapsToDevicePixels="True">
+                        <UniformGrid Columns="3">
+                            <Button Style="{StaticResource SegmentButton}" Content="Follow Windows"
+                                    Tag="{Binding IsThemeSystem}" Command="{Binding SetThemeCommand}"
+                                    CommandParameter="{x:Static models:AppTheme.System}" />
+                            <Button Style="{StaticResource SegmentButton}" Content="Light"
+                                    Tag="{Binding IsThemeLight}" Command="{Binding SetThemeCommand}"
+                                    CommandParameter="{x:Static models:AppTheme.Light}" />
+                            <Button Style="{StaticResource SegmentButton}" Content="Dark"
+                                    Tag="{Binding IsThemeDark}" Command="{Binding SetThemeCommand}"
+                                    CommandParameter="{x:Static models:AppTheme.Dark}" />
+                        </UniformGrid>
+                    </Border>
                 </StackPanel>
             </Border>
 
-            <Button Content="Close" Style="{StaticResource AccentButton}" HorizontalAlignment="Right"
-                    Margin="0,18,0,0" IsCancel="True" IsDefault="True" Click="Close_Click" />
+            <TextBlock Text="CARDS" Style="{StaticResource SectionLabel}" Margin="0,20,0,8" />
+
+            <Border Style="{StaticResource SettingsCard}">
+                <StackPanel>
+                    <CheckBox IsChecked="{Binding GroupByConversation}">
+                        <TextBlock Text="Group mails by conversation" Style="{StaticResource FieldLabel}" FontSize="13" />
+                    </CheckBox>
+                    <TextBlock Style="{StaticResource Caption}" Margin="26,4,0,0"
+                               Text="Show one card per conversation instead of one per mail. Cards can be expanded to reach older messages in the thread." />
+
+                    <Border Style="{StaticResource Divider}" Margin="0,14" />
+
+                    <CheckBox IsChecked="{Binding PinHighPriority}">
+                        <TextBlock Text="Pin high priority to the top" Style="{StaticResource FieldLabel}" FontSize="13" />
+                    </CheckBox>
+                    <TextBlock Style="{StaticResource Caption}" Margin="26,4,0,0"
+                               Text="Hold the cards you flagged with the star above the rest of their column. Turn this off to keep every card in date order." />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Divider}" Margin="-24,22,-24,0" />
+
+            <Button Content="Done" Style="{StaticResource AccentButton}" HorizontalAlignment="Right"
+                    Margin="0,16,0,18" Padding="20,8" IsCancel="True" IsDefault="True" Click="Close_Click" />
         </StackPanel>
     </Border>
 </Window>

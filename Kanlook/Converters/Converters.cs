@@ -36,15 +36,11 @@ public sealed class NullToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-public sealed class ImportanceToBrushConverter : IValueConverter
+/// <summary>Visible only while something is absent - used for the "nothing selected" stand-ins.</summary>
+public sealed class NullToInverseVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
-        value switch
-        {
-            MailImportance.High => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5566B")),
-            MailImportance.Low => new SolidColorBrush(Colors.LightGray),
-            _ => new SolidColorBrush(Colors.Gray),
-        };
+        value is null ? Visibility.Visible : Visibility.Collapsed;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();
@@ -96,6 +92,16 @@ public sealed class CountToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
         value is int count && count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>Visible only while a count is zero - used for the "nothing here" stand-ins.</summary>
+public sealed class ZeroCountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object parameter, CultureInfo culture) =>
+        value is int count && count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();

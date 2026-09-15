@@ -84,8 +84,11 @@ public sealed partial class MailCardViewModel : ObservableObject
         ? $"Move all {_messages.Count} messages to Deleted Items"
         : "Move to Deleted Items";
 
-    /// <summary>Shows the action the button performs, not the current state.</summary>
-    public string ReadToggleGlyph => IsRead ? "✉" : "✔";
+    /// <summary>
+    /// Only the sender's high and low markings are worth a badge; normal is what almost every mail
+    /// is, and a badge on all of them would just be noise.
+    /// </summary>
+    public bool ShowsImportance => Importance != MailImportance.Normal;
 
     public string ReadToggleToolTip => (IsRead, Threaded: _messages.Count > 1) switch
     {
@@ -208,7 +211,7 @@ public sealed partial class MailCardViewModel : ObservableObject
             .OrderByDescending(entry => entry.Message.CreationTime);
 
         foreach (var entry in history)
-            OlderMessages.Add(new MailThreadItemViewModel(entry.Message, entry.IsSent, _context.OnSelect));
+            OlderMessages.Add(new MailThreadItemViewModel(entry.Message, entry.IsSent, _context.Actions.Select));
 
         // Only the board's own mail contributes categories - a reply's are the user's own doing.
         Categories.Clear();
@@ -227,20 +230,23 @@ public sealed partial class MailCardViewModel : ObservableObject
         OnPropertyChanged(nameof(CreationTime));
         OnPropertyChanged(nameof(DeleteToolTip));
         OnPropertyChanged(nameof(IsRead));
-        OnPropertyChanged(nameof(ReadToggleGlyph));
         OnPropertyChanged(nameof(ReadToggleToolTip));
         OnPropertyChanged(nameof(HasAttachments));
         OnPropertyChanged(nameof(Importance));
+        OnPropertyChanged(nameof(ShowsImportance));
         OnPropertyChanged(nameof(Initial));
         OnPropertyChanged(nameof(HasCategories));
         OnPropertyChanged(nameof(MessageCount));
         OnPropertyChanged(nameof(IsConversation));
         OnPropertyChanged(nameof(ExpandLabel));
-        NotifyAnnotationChanged();
+        RefreshAnnotations();
     }
 
-    /// <summary>Both annotations are read across the tile's messages, so a changed set restates them.</summary>
-    private void NotifyAnnotationChanged()
+    /// <summary>
+    /// Re-reads the note and priority flag from the store. Both are read across the tile's messages,
+    /// so a changed message set restates them - and so does an edit made in the reading pane.
+    /// </summary>
+    public void RefreshAnnotations()
     {
         OnPropertyChanged(nameof(IsHighPriority));
         OnPropertyChanged(nameof(PriorityToolTip));
@@ -250,10 +256,10 @@ public sealed partial class MailCardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Select() => _context.OnSelect(Summary);
+    private void Select() => _context.Actions.Select(Summary);
 
     [RelayCommand]
-    private void Delete() => _context.OnDelete(this);
+    private void Delete() => _context.Actions.Delete(this);
 
     /// <summary>
     /// Flips the user's priority flag. Like the read toggle it carries the whole thread, so a
@@ -265,8 +271,9 @@ public sealed partial class MailCardViewModel : ObservableObject
         if (!_context.Annotations.SetHighPriority(_messages.Select(m => m.EntryId), !IsHighPriority))
             return;
 
-        NotifyAnnotationChanged();
-        _context.OnPriorityChanged?.Invoke(this);
+        RefreshAnnotations();
+        _context.OnPriorityChanged(this);
+        _context.Actions.AnnotationsChanged(this);
     }
 
     [RelayCommand]
@@ -280,7 +287,10 @@ public sealed partial class MailCardViewModel : ObservableObject
     private void CommitComment()
     {
         if (_context.Annotations.SetComment(CommentTarget.EntryId, CommentDraft))
-            NotifyAnnotationChanged();
+        {
+            RefreshAnnotations();
+            _context.Actions.AnnotationsChanged(this);
+        }
 
         IsEditingComment = false;
     }
@@ -293,8 +303,11 @@ public sealed partial class MailCardViewModel : ObservableObject
     private void RemoveComment()
     {
         IsEditingComment = false;
-        if (_context.Annotations.SetComment(CommentTarget.EntryId, ""))
-            NotifyAnnotationChanged();
+        if (!_context.Annotations.SetComment(CommentTarget.EntryId, ""))
+            return;
+
+        RefreshAnnotations();
+        _context.Actions.AnnotationsChanged(this);
     }
 
     /// <summary>
@@ -302,7 +315,7 @@ public sealed partial class MailCardViewModel : ObservableObject
     /// the toggle carries the whole thread with it rather than just the newest message.
     /// </summary>
     [RelayCommand]
-    private void ToggleRead() => _context.OnSetRead(_messages, !IsRead);
+    private void ToggleRead() => _context.Actions.SetRead(_messages, !IsRead);
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;

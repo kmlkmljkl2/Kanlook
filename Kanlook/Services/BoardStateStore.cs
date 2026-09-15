@@ -1,36 +1,49 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Kanlook.Models;
 
 namespace Kanlook.Services;
 
 public sealed class BoardStateStore
 {
-    private static readonly string FilePath = Path.Combine(
+    /// <summary>Where the state lives unless a caller asks for somewhere else.</summary>
+    public static string DefaultFilePath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Kanlook", "board-state.json");
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    // Enums as names, so the file stays readable if anybody ever opens it.
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     private readonly AppState _state;
+    private readonly string _filePath;
 
-    public BoardStateStore()
+    /// <param name="filePath">
+    /// Where to read and write the state. Defaults to <see cref="DefaultFilePath"/>; passing
+    /// somewhere else keeps a throwaway board - a preview harness, say - out of the real file.
+    /// </param>
+    public BoardStateStore(string? filePath = null)
     {
-        _state = Load();
+        _filePath = filePath ?? DefaultFilePath;
+        _state = Load(_filePath);
         Annotations = new MailAnnotationStore(_state.MailAnnotations, Save);
     }
 
     /// <summary>The user's notes and priority flags. Shared by every board and mail list.</summary>
     public MailAnnotationStore Annotations { get; }
 
-    private static AppState Load()
+    private static AppState Load(string filePath)
     {
         try
         {
-            if (File.Exists(FilePath))
+            if (File.Exists(filePath))
             {
-                var json = File.ReadAllText(FilePath);
-                var loaded = JsonSerializer.Deserialize<AppState>(json);
+                var json = File.ReadAllText(filePath);
+                var loaded = JsonSerializer.Deserialize<AppState>(json, JsonOptions);
                 if (loaded is not null)
                     return loaded;
             }
@@ -49,14 +62,14 @@ public sealed class BoardStateStore
             return existing;
 
         var fresh = new BoardState();
-        var defaults = new[] { ("New", "#5B8DEF"), ("In Progress", "#F2A93B"), ("Waiting", "#B87CE0"), ("Done", "#4CB782") };
-        for (var i = 0; i < defaults.Length; i++)
+        for (var i = 0; i < ColumnColors.DefaultColumns.Count; i++)
         {
+            var (name, colorHex) = ColumnColors.DefaultColumns[i];
             fresh.Columns.Add(new KanbanColumnDefinition
             {
-                Name = defaults[i].Item1,
-                ColorHex = defaults[i].Item2,
-                Order = i
+                Name = name,
+                ColorHex = colorHex,
+                Order = i,
             });
         }
 
@@ -77,10 +90,9 @@ public sealed class BoardStateStore
     {
         try
         {
-            var dir = Path.GetDirectoryName(FilePath)!;
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
             var json = JsonSerializer.Serialize(_state, JsonOptions);
-            File.WriteAllText(FilePath, json);
+            File.WriteAllText(_filePath, json);
         }
         catch (IOException) { }
     }

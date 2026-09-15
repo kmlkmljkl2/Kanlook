@@ -6,29 +6,48 @@ namespace Kanlook.Behaviors;
 
 /// <summary>
 /// Moves the keyboard focus into an element the moment it becomes visible, so an editor a command
-/// just revealed can be typed into without a click first. In a text box the caret lands at the end
-/// rather than selecting everything, so reopening an existing note doesn't risk wiping it.
+/// just revealed can be typed into without a click first.
 /// </summary>
 public static class FocusBehavior
 {
+    /// <summary>
+    /// Focus the element, leaving a text box's caret at the end. For an editor whose existing text
+    /// is being added to - a note - where selecting everything would risk wiping it.
+    /// </summary>
     public static readonly DependencyProperty FocusWhenVisibleProperty = DependencyProperty.RegisterAttached(
         "FocusWhenVisible",
         typeof(bool),
         typeof(FocusBehavior),
-        new PropertyMetadata(false, OnFocusWhenVisibleChanged));
+        new PropertyMetadata(false, OnRequestChanged));
 
     public static bool GetFocusWhenVisible(DependencyObject obj) => (bool)obj.GetValue(FocusWhenVisibleProperty);
 
     public static void SetFocusWhenVisible(DependencyObject obj, bool value) =>
         obj.SetValue(FocusWhenVisibleProperty, value);
 
-    private static void OnFocusWhenVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    /// <summary>
+    /// Focus the element and select its text. For an editor whose content is normally replaced
+    /// wholesale - a rename box - where typing should overwrite the old name.
+    /// </summary>
+    public static readonly DependencyProperty SelectAllWhenVisibleProperty = DependencyProperty.RegisterAttached(
+        "SelectAllWhenVisible",
+        typeof(bool),
+        typeof(FocusBehavior),
+        new PropertyMetadata(false, OnRequestChanged));
+
+    public static bool GetSelectAllWhenVisible(DependencyObject obj) =>
+        (bool)obj.GetValue(SelectAllWhenVisibleProperty);
+
+    public static void SetSelectAllWhenVisible(DependencyObject obj, bool value) =>
+        obj.SetValue(SelectAllWhenVisibleProperty, value);
+
+    private static void OnRequestChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not FrameworkElement element)
             return;
 
         element.IsVisibleChanged -= OnIsVisibleChanged;
-        if (e.NewValue is true)
+        if (GetFocusWhenVisible(element) || GetSelectAllWhenVisible(element))
             element.IsVisibleChanged += OnIsVisibleChanged;
     }
 
@@ -41,7 +60,12 @@ public static class FocusBehavior
         element.Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
             element.Focus();
-            if (element is TextBox box)
+            if (element is not TextBox box)
+                return;
+
+            if (GetSelectAllWhenVisible(element))
+                box.SelectAll();
+            else
                 box.CaretIndex = box.Text.Length;
         });
     }

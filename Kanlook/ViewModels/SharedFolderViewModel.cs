@@ -18,18 +18,14 @@ public sealed partial class SharedFolderViewModel : ObservableObject
         string folderName,
         List<MailSummary> mails,
         BoardStateStore boardStore,
-        Action<MailSummary> onMailSelected,
-        Action<MailCardViewModel> onCardDelete,
-        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
+        MailCardActions actions)
     {
         FolderName = folderName;
         _mails = mails;
         _settings = boardStore.Settings;
         _cardContext = new MailCardContext
         {
-            OnSelect = onMailSelected,
-            OnDelete = onCardDelete,
-            OnSetRead = onSetRead,
+            Actions = actions,
             Annotations = boardStore.Annotations,
             OnPriorityChanged = card => MailCardOrder.Reposition(Cards, card, _settings.PinHighPriority),
         };
@@ -45,6 +41,16 @@ public sealed partial class SharedFolderViewModel : ObservableObject
         Cards.Clear();
         foreach (var card in MailCardOrder.Sort(cards, _settings.PinHighPriority))
             Cards.Add(card);
+    }
+
+    /// <summary>Picks up a note or flag set in the reading pane, and re-sorts if the flag moved it.</summary>
+    public void RefreshAnnotations(string entryId)
+    {
+        if (Cards.FirstOrDefault(c => c.Messages.Any(m => m.EntryId == entryId)) is not { } card)
+            return;
+
+        card.RefreshAnnotations();
+        MailCardOrder.Reposition(Cards, card, _settings.PinHighPriority);
     }
 
     /// <summary>Restates the cards holding these mails after their read state changed.</summary>

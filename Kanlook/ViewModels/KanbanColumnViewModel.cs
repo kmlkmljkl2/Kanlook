@@ -30,18 +30,23 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
     [ObservableProperty]
     private bool _isWaitSettingsOpen;
 
+    /// <summary>The header's overflow menu - rename, colour, move, remove and the rest.</summary>
+    [ObservableProperty]
+    private bool _isMenuOpen;
+
     /// <summary>
     /// Mail parked here is waiting on somebody else. A reply to one of its conversations sends the
     /// whole conversation back to the default column - it needs attention again.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WaitingBadge))]
+    [NotifyPropertyChangedFor(nameof(HasReturnTimer))]
     [NotifyPropertyChangedFor(nameof(WaitingToolTip))]
     private bool _waitsForReply;
 
     /// <summary>Days until a waiting conversation returns even without a reply. Null turns it off.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WaitingBadge))]
+    [NotifyPropertyChangedFor(nameof(ReturnAfterDaysLabel))]
+    [NotifyPropertyChangedFor(nameof(HasReturnTimer))]
     [NotifyPropertyChangedFor(nameof(WaitingToolTip))]
     private int? _returnAfterDays;
 
@@ -57,7 +62,13 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
     [ObservableProperty]
     private string _returnAtTimeText = "";
 
-    public string WaitingBadge => ReturnAfterDays is { } days ? $"⏳ {days}d" : "⏳";
+    /// <summary>The colours the picker offers.</summary>
+    public IReadOnlyList<string> Palette => ColumnColors.All;
+
+    /// <summary>The return deadline, short enough to sit in the header next to the clock.</summary>
+    public string ReturnAfterDaysLabel => ReturnAfterDays is { } days ? $"{days}d" : "";
+
+    public bool HasReturnTimer => WaitsForReply && ReturnAfterDays is not null;
 
     public string WaitingToolTip => !WaitsForReply
         ? "Waiting for reply"
@@ -99,7 +110,14 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void BeginRename() => IsEditingName = true;
+    private void ToggleMenu() => IsMenuOpen = !IsMenuOpen;
+
+    [RelayCommand]
+    private void BeginRename()
+    {
+        IsMenuOpen = false;
+        IsEditingName = true;
+    }
 
     [RelayCommand]
     private void CommitRename()
@@ -110,8 +128,16 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
         _onChanged();
     }
 
+    /// <summary>
+    /// Opens the colour picker. Reached from the overflow menu, so the menu steps aside first -
+    /// two popups stacked on one button would fight over the click that dismisses them.
+    /// </summary>
     [RelayCommand]
-    private void ToggleColorPicker() => IsColorPickerOpen = !IsColorPickerOpen;
+    private void OpenColorPicker()
+    {
+        IsMenuOpen = false;
+        IsColorPickerOpen = true;
+    }
 
     [RelayCommand]
     private void SetColor(string hex)
@@ -122,10 +148,18 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void SetAsDefault() => Board.SetDefaultColumn(this);
+    private void SetAsDefault()
+    {
+        IsMenuOpen = false;
+        Board.SetDefaultColumn(this);
+    }
 
     [RelayCommand]
-    private void ToggleWaitSettings() => IsWaitSettingsOpen = !IsWaitSettingsOpen;
+    private void OpenWaitSettings()
+    {
+        IsMenuOpen = false;
+        IsWaitSettingsOpen = true;
+    }
 
     /// <summary>
     /// Turning the flag on has to reach the board: the mail already sitting here needs a parked-at
@@ -175,11 +209,23 @@ public sealed partial class KanbanColumnViewModel : ObservableObject
             : null;
 
     [RelayCommand]
-    private void Remove() => _onRemove(this);
+    private void Remove()
+    {
+        IsMenuOpen = false;
+        _onRemove(this);
+    }
 
     [RelayCommand]
-    private void MoveLeft() => _onMove(this, -1);
+    private void MoveLeft()
+    {
+        IsMenuOpen = false;
+        _onMove(this, -1);
+    }
 
     [RelayCommand]
-    private void MoveRight() => _onMove(this, 1);
+    private void MoveRight()
+    {
+        IsMenuOpen = false;
+        _onMove(this, 1);
+    }
 }

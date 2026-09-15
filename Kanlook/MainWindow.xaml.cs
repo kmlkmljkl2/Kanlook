@@ -11,7 +11,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _viewModel = new MainViewModel(new OutlookService());
+        _viewModel = new MainViewModel(new OutlookService(), new BoardStateStore());
         DataContext = _viewModel;
         Closed += (_, _) => _viewModel.Shutdown();
     }

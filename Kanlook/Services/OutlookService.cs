@@ -196,7 +196,7 @@ public sealed class OutlookService : IOutlookService
                     break;
                 }
 
-                // MailItem.Class == 43 (olMail); other item types (meeting requests, etc.) are skipped for this demo.
+                // MailItem.Class == 43 (olMail). Other item types - meeting requests, reports - aren't board material.
                 if (IsMailItem(raw))
                 {
                     result.Add(ToSummary(raw, storeId));

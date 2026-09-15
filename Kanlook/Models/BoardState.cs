@@ -5,7 +5,7 @@ public sealed class KanbanColumnDefinition
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "New column";
     public int Order { get; set; }
-    public string ColorHex { get; set; } = "#5B8DEF";
+    public string ColorHex { get; set; } = ColumnColors.Blue;
 
     /// <summary>
     /// Mail parked here is waiting on somebody else. When a reply to one of its conversations comes

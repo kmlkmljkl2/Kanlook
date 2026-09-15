@@ -1,14 +1,17 @@
+using System.Runtime.CompilerServices;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Kanlook.Models;
 using Kanlook.Services;
 
 namespace Kanlook.ViewModels;
 
 /// <summary>Backs the settings dialog. Every change is persisted and applied immediately.</summary>
-public sealed class SettingsViewModel : ObservableObject
+public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly BoardStateStore _store;
 
-    /// <summary>Re-lays out the open folder - each of these settings changes its card order.</summary>
+    /// <summary>Re-lays out the open folder - the card settings change its order.</summary>
     private readonly Action _onLayoutChanged;
 
     public SettingsViewModel(BoardStateStore store, Action onLayoutChanged)
@@ -26,7 +29,8 @@ public sealed class SettingsViewModel : ObservableObject
                 return;
 
             _store.Settings.GroupByConversation = value;
-            Applied();
+            Persist();
+            _onLayoutChanged();
         }
     }
 
@@ -39,14 +43,39 @@ public sealed class SettingsViewModel : ObservableObject
                 return;
 
             _store.Settings.PinHighPriority = value;
-            Applied();
+            Persist();
+            _onLayoutChanged();
         }
     }
 
-    private void Applied([System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+    /// <summary>
+    /// The three segments of the theme picker. Booleans rather than the enum itself, so the picker
+    /// can highlight the chosen one without a value converter.
+    /// </summary>
+    public bool IsThemeSystem => _store.Settings.Theme == AppTheme.System;
+
+    public bool IsThemeLight => _store.Settings.Theme == AppTheme.Light;
+
+    public bool IsThemeDark => _store.Settings.Theme == AppTheme.Dark;
+
+    [RelayCommand]
+    private void SetTheme(AppTheme theme)
+    {
+        if (_store.Settings.Theme == theme)
+            return;
+
+        _store.Settings.Theme = theme;
+        ThemeManager.Apply(theme);
+        _store.Save();
+
+        OnPropertyChanged(nameof(IsThemeSystem));
+        OnPropertyChanged(nameof(IsThemeLight));
+        OnPropertyChanged(nameof(IsThemeDark));
+    }
+
+    private void Persist([CallerMemberName] string? propertyName = null)
     {
         _store.Save();
         OnPropertyChanged(propertyName);
-        _onLayoutChanged();
     }
 }

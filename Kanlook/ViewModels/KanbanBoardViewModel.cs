@@ -59,9 +59,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         AttachmentIndex attachmentIndex,
         AttachmentIndexer indexer,
         SentMailIndex sentMail,
-        Action<MailSummary> onMailSelected,
-        Action<MailCardViewModel> onCardDelete,
-        Action<IReadOnlyList<MailSummary>, bool> onSetRead)
+        MailCardActions actions)
     {
         FolderName = folderName;
         _boardStore = boardStore;
@@ -71,9 +69,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _folderEntryId = folderEntryId;
         _cardContext = new MailCardContext
         {
-            OnSelect = onMailSelected,
-            OnDelete = onCardDelete,
-            OnSetRead = onSetRead,
+            Actions = actions,
             Annotations = boardStore.Annotations,
             OnPriorityChanged = OnCardPriorityChanged,
         };
@@ -201,7 +197,16 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         }
 
         RefreshSentHistory();
+        RefreshEmptyState();
     }
+
+    private void RefreshEmptyState() => OnPropertyChanged(nameof(HasNoSearchResults));
+
+    /// <summary>
+    /// The search hid everything. Worth saying out loud - an empty board and a board whose mail the
+    /// search filtered out look identical otherwise.
+    /// </summary>
+    public bool HasNoSearchResults => SearchText.Length > 0 && Columns.All(c => c.Cards.Count == 0);
 
     /// <summary>
     /// Hangs the user's own replies off the matching tiles. They're history only: the mail stays in
@@ -228,6 +233,25 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
         if (Columns.FirstOrDefault(c => c.Cards.Contains(card)) is { } column)
             MoveToSortedPosition(column, card);
+    }
+
+    /// <summary>
+    /// Picks up a note or flag set outside the board - in the reading pane - and moves the card if
+    /// priority pinning now puts it somewhere else.
+    /// </summary>
+    public void RefreshAnnotations(string entryId)
+    {
+        foreach (var column in Columns)
+        {
+            if (column.Cards.FirstOrDefault(c => c.Messages.Any(m => m.EntryId == entryId)) is not { } card)
+                continue;
+
+            card.RefreshAnnotations();
+            if (PinHighPriority)
+                MoveToSortedPosition(column, card);
+
+            return;
+        }
     }
 
     private string DefaultColumnId() =>
@@ -414,6 +438,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         // The mail is gone for good - its note and flag can't be reached again either way.
         _boardStore.Annotations.Forget(ids);
 
+        RefreshEmptyState();
         Save();
     }
 
@@ -486,6 +511,7 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         {
             _indexer.Enqueue(_mails);
             RefreshIndexingStatus();
+            RefreshEmptyState();
         }
 
         return added;

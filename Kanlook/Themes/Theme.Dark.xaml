@@ -1,0 +1,41 @@
+<!-- Dark theme. Must define exactly the same keys as Theme.Light.xaml; ThemeManager enforces it. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Sidebar: darker than the content, so the split the light theme has is kept -->
+    <SolidColorBrush x:Key="SidebarBgBrush" Color="#12141C" />
+    <SolidColorBrush x:Key="SidebarBgHoverBrush" Color="#1E2130" />
+    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="#3A6FF7" />
+    <SolidColorBrush x:Key="SidebarBorderBrush" Color="#0B0D13" />
+    <SolidColorBrush x:Key="SidebarTextBrush" Color="#C4C9DC" />
+    <SolidColorBrush x:Key="SidebarTextMutedBrush" Color="#767C93" />
+
+    <!-- Content surfaces -->
+    <SolidColorBrush x:Key="AppBgBrush" Color="#171922" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#1F222E" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#262A38" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#313644" />
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="#3E4454" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E7EAF3" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9BA2B8" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#767D93" />
+
+    <!-- Accent and status: lifted, since the saturated light-theme values go muddy on a dark bg -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#5B8DEF" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#7BA4F5" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#233049" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#E2556B" />
+    <SolidColorBrush x:Key="HighImportanceBrush" Color="#F0687C" />
+    <SolidColorBrush x:Key="LowImportanceBrush" Color="#767D93" />
+
+    <SolidColorBrush x:Key="PriorityBrush" Color="#E8A33D" />
+    <SolidColorBrush x:Key="NoteBgBrush" Color="#2E2819" />
+    <SolidColorBrush x:Key="NoteBorderBrush" Color="#4C4229" />
+
+    <!-- Hover lifts rather than darkens here -->
+    <SolidColorBrush x:Key="HoverOverlayBrush" Color="#1AFFFFFF" />
+    <SolidColorBrush x:Key="PressOverlayBrush" Color="#28FFFFFF" />
+
+</ResourceDictionary>

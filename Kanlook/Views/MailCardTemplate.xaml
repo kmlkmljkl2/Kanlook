@@ -1,14 +1,21 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:vm="clr-namespace:Kanlook.ViewModels"
-                    xmlns:conv="clr-namespace:Kanlook.Converters"
                     xmlns:beh="clr-namespace:Kanlook.Behaviors"
                     xmlns:dd="urn:gong-wpf-dragdrop">
 
-    <conv:FriendlyDateConverter x:Key="FriendlyDateConverter" />
-    <conv:ImportanceToBrushConverter x:Key="ImportanceToBrushConverter" />
-    <conv:ImportanceToLabelConverter x:Key="ImportanceToLabelConverter" />
-    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <!-- The sender's own high/low marking. Never drawn for a normal mail, which is most of them. -->
+    <Style x:Key="ImportanceIcon" TargetType="Path" BasedOn="{StaticResource Icon}">
+        <Setter Property="Data" Value="{StaticResource Icon.Flag}" />
+        <Setter Property="Width" Value="13" />
+        <Setter Property="Height" Value="13" />
+        <Setter Property="Stroke" Value="{DynamicResource LowImportanceBrush}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Importance}" Value="High">
+                <Setter Property="Stroke" Value="{DynamicResource HighImportanceBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
 
     <!-- One older message inside a conversation tile -->
     <DataTemplate DataType="{x:Type vm:MailThreadItemViewModel}">
@@ -25,18 +32,18 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Ellipse Grid.Row="0" Grid.Column="0" Width="6" Height="6" Margin="0,0,6,0"
-                         Fill="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                <Ellipse Grid.Row="0" Grid.Column="0" Width="6" Height="6" Margin="0,0,7,0"
+                         Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center"
                          Visibility="{Binding IsRead, Converter={StaticResource InverseBoolToVisibility}}" />
 
                 <!-- A reply the user sent. Never competes with the unread dot: sent mail is always read. -->
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="↪" FontSize="10" Margin="0,0,5,0"
-                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
-                           ToolTip="Your reply"
-                           Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}" />
+                <Path Grid.Row="0" Grid.Column="0" Data="{StaticResource Icon.Sent}"
+                      Style="{StaticResource Icon}" Width="11" Height="11" Margin="0,0,6,0"
+                      Stroke="{DynamicResource TextMutedBrush}" ToolTip="Your reply"
+                      Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}" />
 
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SenderName}" FontSize="11"
-                           Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
+                           Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="FontWeight" Value="Normal" />
@@ -50,15 +57,15 @@
                 </TextBlock>
 
                 <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
-                    <TextBlock Text="📎" FontSize="9" Margin="0,0,4,0" VerticalAlignment="Center"
-                               Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
+                    <Path Data="{StaticResource Icon.Attachment}" Style="{StaticResource Icon}"
+                          Width="11" Height="11" Margin="0,0,5,0" Stroke="{DynamicResource TextMutedBrush}"
+                          Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Text="{Binding ReceivedTime, Converter={StaticResource FriendlyDateConverter}}"
-                               FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                               Style="{StaticResource Caption}" FontSize="10" VerticalAlignment="Center" />
                 </StackPanel>
 
                 <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Snippet}"
-                           FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
-                           TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                           Style="{StaticResource CardSnippet}" FontSize="10.5" Margin="0,1,0,0" />
             </Grid>
         </Button>
     </DataTemplate>
@@ -85,17 +92,13 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{StaticResource AccentBrush}"
-                             Margin="0,0,6,0" VerticalAlignment="Center"
+                    <Ellipse Grid.Column="0" Width="7" Height="7" Fill="{DynamicResource AccentBrush}"
+                             Margin="0,0,7,0" VerticalAlignment="Center"
                              Visibility="{Binding IsRead, Converter={StaticResource InverseBoolToVisibility}}" />
 
-                    <TextBlock Grid.Column="1" Text="{Binding Subject}"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               FontSize="13">
+                    <TextBlock Grid.Column="1" Text="{Binding Subject}">
                         <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="Normal" />
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource CardTitle}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsRead}" Value="False">
                                         <Setter Property="FontWeight" Value="SemiBold" />
@@ -106,13 +109,10 @@
                     </TextBlock>
 
                     <!-- Conversation size, like Outlook's message count -->
-                    <Border Grid.Column="2" Margin="6,0,0,0" Padding="6,1" CornerRadius="9"
-                            Background="{StaticResource AppBgBrush}" BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1" VerticalAlignment="Center"
+                    <Border Grid.Column="2" Style="{StaticResource CountBadge}" Margin="6,0,0,0"
                             ToolTip="Messages in this conversation"
                             Visibility="{Binding IsConversation, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="{Binding MessageCount}" FontSize="10.5" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding MessageCount}" Style="{StaticResource BadgeText}" />
                     </Border>
                 </Grid>
 
@@ -122,20 +122,17 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="{Binding SenderName}" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Column="1" Text="{Binding ReceivedTime, Converter={StaticResource FriendlyDateConverter}}"
-                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0" />
+                    <TextBlock Grid.Column="0" Text="{Binding SenderName}" Style="{StaticResource CardMeta}" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource CardMeta}" Margin="8,0,0,0" FontSize="11"
+                               Text="{Binding ReceivedTime, Converter={StaticResource FriendlyDateConverter}}" />
                 </Grid>
 
                 <!-- Snippet -->
-                <TextBlock Grid.Row="2" Text="{Binding Snippet}" FontSize="11.5"
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                           MaxHeight="32" Margin="0,0,0,6" />
+                <TextBlock Grid.Row="2" Text="{Binding Snippet}" Style="{StaticResource CardSnippet}"
+                           MaxHeight="32" Margin="0,0,0,7" />
 
                 <!-- Outlook categories -->
-                <ItemsControl Grid.Row="3" ItemsSource="{Binding Categories}" Margin="0,0,0,4"
+                <ItemsControl Grid.Row="3" ItemsSource="{Binding Categories}" Margin="0,0,0,3"
                               Visibility="{Binding HasCategories, Converter={StaticResource BoolToVisibility}}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -154,16 +151,15 @@
                 </ItemsControl>
 
                 <!-- The user's note: shown as a block, swapped for an editor while being changed -->
-                <Grid Grid.Row="4" Margin="0,0,0,2">
+                <Grid Grid.Row="4">
                     <Button Style="{StaticResource CardNoteButton}" Command="{Binding BeginEditCommentCommand}"
                             ToolTip="Edit note" dd:DragDrop.DragSourceIgnore="True">
-                        <TextBlock Text="{Binding Comment}" FontSize="11.5" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding Comment}" Style="{StaticResource BodyText}" FontSize="11.5" />
                     </Button>
 
                     <StackPanel Visibility="{Binding IsEditingComment, Converter={StaticResource BoolToVisibility}}"
                                 dd:DragDrop.DragSourceIgnore="True">
-                        <TextBox Style="{StaticResource CardNoteTextBox}"
+                        <TextBox Style="{StaticResource NoteTextBox}"
                                  Text="{Binding CommentDraft, UpdateSourceTrigger=PropertyChanged}"
                                  beh:FocusBehavior.FocusWhenVisible="True"
                                  ToolTip="Ctrl+Enter saves, Esc discards">
@@ -173,63 +169,96 @@
                             </TextBox.InputBindings>
                         </TextBox>
 
-                        <Grid Margin="0,5,0,0">
+                        <Grid Margin="0,6,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0" Content="Remove" Style="{StaticResource FlatButton}"
-                                    FontSize="11" Padding="4,2" ToolTip="Delete this note"
+                                    FontSize="11" Padding="5,3" ToolTip="Delete this note"
                                     Command="{Binding RemoveCommentCommand}"
                                     Visibility="{Binding HasComment, Converter={StaticResource BoolToVisibility}}" />
                             <Button Grid.Column="2" Content="Save" Style="{StaticResource AccentButton}"
-                                    FontSize="11" Padding="10,4" Command="{Binding CommitCommentCommand}" />
+                                    FontSize="11" Padding="12,4" Command="{Binding CommitCommentCommand}" />
                         </Grid>
                     </StackPanel>
                 </Grid>
 
-                <!-- Icon row + actions -->
-                <Grid Grid.Row="5" Margin="0,4,0,0">
+                <!-- Badges on the left, actions on the right -->
+                <Grid Grid.Row="5" Margin="0,5,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="📎" FontSize="11" Margin="0,0,6,0"
-                                   Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="⚑" FontSize="12"
-                                   Foreground="{Binding Importance, Converter={StaticResource ImportanceToBrushConverter}}"
-                                   ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}" />
+                        <Path Data="{StaticResource Icon.Attachment}" Style="{StaticResource Icon}"
+                              Width="13" Height="13" Margin="0,0,7,0" ToolTip="Has attachments"
+                              Stroke="{DynamicResource TextMutedBrush}"
+                              Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVisibility}}" />
+                        <Path Style="{StaticResource ImportanceIcon}"
+                              ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}"
+                              Visibility="{Binding ShowsImportance, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Style="{StaticResource CardPriorityButton}"
                                 Command="{Binding TogglePriorityCommand}" ToolTip="{Binding PriorityToolTip}"
                                 dd:DragDrop.DragSourceIgnore="True">
-                            <TextBlock>
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Text" Value="☆" />
+                            <Path Data="{StaticResource Icon.Star}" Width="14" Height="14">
+                                <Path.Style>
+                                    <Style TargetType="Path" BasedOn="{StaticResource Icon}">
                                         <Style.Triggers>
+                                            <!-- Flagged fills the star in as well as outlining it. -->
                                             <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
-                                                <Setter Property="Text" Value="★" />
+                                                <Setter Property="Fill"
+                                                        Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
+                                </Path.Style>
+                            </Path>
                         </Button>
-                        <Button Style="{StaticResource CardNoteToggleButton}" Content="💬"
+
+                        <Button Style="{StaticResource CardNoteToggleButton}"
                                 Command="{Binding BeginEditCommentCommand}" ToolTip="{Binding CommentToolTip}"
-                                dd:DragDrop.DragSourceIgnore="True" />
-                        <Button Style="{StaticResource CardActionButton}" Content="{Binding ReadToggleGlyph}"
-                                Command="{Binding ToggleReadCommand}" ToolTip="{Binding ReadToggleToolTip}"
-                                dd:DragDrop.DragSourceIgnore="True" />
-                        <Button Style="{StaticResource CardActionButton}" Content="🗑"
-                                Command="{Binding DeleteCommand}" ToolTip="{Binding DeleteToolTip}"
-                                dd:DragDrop.DragSourceIgnore="True" />
+                                dd:DragDrop.DragSourceIgnore="True">
+                            <Path Data="{StaticResource Icon.Note}" Style="{StaticResource Icon}"
+                                  Width="14" Height="14" />
+                        </Button>
+
+                        <Button Style="{StaticResource CardActionButton}" Command="{Binding ToggleReadCommand}"
+                                ToolTip="{Binding ReadToggleToolTip}" dd:DragDrop.DragSourceIgnore="True">
+                            <Path Width="14" Height="14">
+                                <Path.Style>
+                                    <!-- Shows the action, not the state: a tick marks read, an envelope unread. -->
+                                    <Style TargetType="Path" BasedOn="{StaticResource Icon}">
+                                        <Setter Property="Data" Value="{StaticResource Icon.Check}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRead}" Value="True">
+                                                <Setter Property="Data" Value="{StaticResource Icon.EnvelopeOpen}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                        </Button>
+
+                        <Button Command="{Binding DeleteCommand}" ToolTip="{Binding DeleteToolTip}"
+                                dd:DragDrop.DragSourceIgnore="True">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource CardActionButton}">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <Path Data="{StaticResource Icon.Trash}" Style="{StaticResource Icon}"
+                                  Width="14" Height="14" />
+                        </Button>
                     </StackPanel>
                 </Grid>
 
@@ -239,21 +268,19 @@
                     <Button Style="{StaticResource ThreadExpanderButton}" Command="{Binding ToggleExpandedCommand}"
                             dd:DragDrop.DragSourceIgnore="True">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontSize="9" Margin="0,0,5,0" VerticalAlignment="Center"
-                                       Foreground="{StaticResource AccentBrush}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Text" Value="▶" />
+                            <Path Width="9" Height="9" Margin="0,0,6,0">
+                                <Path.Style>
+                                    <Style TargetType="Path" BasedOn="{StaticResource IconFilled}">
+                                        <Setter Property="Data" Value="{StaticResource Icon.ChevronRightFilled}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-                                                <Setter Property="Text" Value="▼" />
+                                                <Setter Property="Data" Value="{StaticResource Icon.ChevronDownFilled}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="{Binding ExpandLabel}" FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{StaticResource AccentBrush}" />
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="{Binding ExpandLabel}" FontSize="11" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
 
@@ -262,7 +289,7 @@
                                   Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}">
                         <ItemsControl.Template>
                             <ControlTemplate TargetType="ItemsControl">
-                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0"
+                                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0"
                                         Padding="7,0,0,0">
                                     <ItemsPresenter />
                                 </Border>

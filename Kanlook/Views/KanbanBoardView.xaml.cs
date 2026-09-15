@@ -31,18 +31,7 @@ public partial class KanbanBoardView : UserControl
 
         if (sender is FrameworkElement { DataContext: KanbanColumnViewModel column })
             column.CommitRenameCommand.Execute(null);
+
         Keyboard.ClearFocus();
-    }
-
-    private void NameEditBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (sender is not TextBox box || e.NewValue is not true)
-            return;
-
-        Dispatcher.BeginInvoke(() =>
-        {
-            box.Focus();
-            box.SelectAll();
-        });
     }
 }

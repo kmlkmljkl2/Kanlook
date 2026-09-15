@@ -5,10 +5,16 @@
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>
+            <!--
+                Order matters: each dictionary may only use StaticResource keys from the ones above
+                it. The theme goes first and is the one ThemeManager swaps at runtime, which is why
+                nothing else refers to its brushes with anything but DynamicResource.
+            -->
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Styles/Palette.xaml" />
-                <ResourceDictionary Source="Styles/Controls.xaml" />
+                <ResourceDictionary Source="Themes/Theme.Light.xaml" />
+                <ResourceDictionary Source="Styles/Icons.xaml" />
                 <ResourceDictionary Source="Styles/Converters.xaml" />
+                <ResourceDictionary Source="Styles/Controls.xaml" />
                 <ResourceDictionary Source="Views/MailCardTemplate.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

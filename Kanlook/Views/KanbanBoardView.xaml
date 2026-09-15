@@ -4,17 +4,19 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:Kanlook.ViewModels"
+             xmlns:beh="clr-namespace:Kanlook.Behaviors"
              xmlns:dd="urn:gong-wpf-dragdrop"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:KanbanBoardViewModel}">
 
-    <Grid Background="{StaticResource AppBgBrush}">
+    <Grid Background="{DynamicResource AppBgBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="28,22,28,14">
+        <!-- Board header: folder name, indexing note, search, add column -->
+        <Grid Grid.Row="0" Margin="26,20,26,14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -22,18 +24,18 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="{Binding FolderName}" FontSize="21" FontWeight="Bold"
-                       VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Grid.Column="0" Text="{Binding FolderName}" Style="{StaticResource PageTitle}"
+                       VerticalAlignment="Center" />
 
-            <TextBlock Grid.Column="1" Text="{Binding IndexingStatus}" FontSize="11.5" Margin="14,0,14,0"
-                       VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+            <TextBlock Grid.Column="1" Text="{Binding IndexingStatus}" Style="{StaticResource Caption}"
+                       Margin="14,0,14,0" VerticalAlignment="Center" TextWrapping="NoWrap"
                        TextTrimming="CharacterEllipsis"
                        Visibility="{Binding IndexingStatus, Converter={StaticResource NullToVisibilityConverter}}" />
 
             <!-- Search: subject, sender, body, categories and attachment contents -->
-            <Border Grid.Column="2" Width="260" Margin="0,0,10,0" CornerRadius="8" Padding="10,0"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1">
+            <Border Grid.Column="2" Width="264" Margin="0,0,10,0" CornerRadius="8" Padding="10,0"
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1" SnapsToDevicePixels="True">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -41,277 +43,277 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="🔍" FontSize="11" VerticalAlignment="Center"
-                               Margin="0,0,6,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <Path Grid.Column="0" Data="{StaticResource Icon.Search}" Style="{StaticResource Icon}"
+                          Width="13" Height="13" Margin="0,0,7,0" Stroke="{DynamicResource TextMutedBrush}" />
 
                     <Grid Grid.Column="1">
                         <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
                                  Style="{StaticResource SearchTextBox}" />
                         <TextBlock Text="Search mail and attachments" FontSize="12" IsHitTestVisible="False"
-                                   VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"
                                    Visibility="{Binding SearchText, Converter={StaticResource EmptyStringToVisibilityConverter}}" />
                     </Grid>
 
-                    <Button Grid.Column="2" Content="✕" Style="{StaticResource FlatButton}" FontSize="10"
-                            Padding="4" ToolTip="Clear search" Command="{Binding ClearSearchCommand}"
-                            Visibility="{Binding SearchText, Converter={StaticResource NonEmptyStringToVisibilityConverter}}" />
+                    <Button Grid.Column="2" Style="{StaticResource FlatButton}" Padding="4" ToolTip="Clear search"
+                            Command="{Binding ClearSearchCommand}"
+                            Visibility="{Binding SearchText, Converter={StaticResource NonEmptyStringToVisibilityConverter}}">
+                        <Path Data="{StaticResource Icon.Close}" Style="{StaticResource Icon}" Width="11" Height="11" />
+                    </Button>
                 </Grid>
             </Border>
 
-            <Button Grid.Column="3" Style="{StaticResource AccentButton}" Content="+ Add column"
-                    Command="{Binding AddColumnCommand}" />
+            <Button Grid.Column="3" Style="{StaticResource AccentButton}" Command="{Binding AddColumnCommand}"
+                    ToolTip="Add a column to this board">
+                <StackPanel Orientation="Horizontal">
+                    <Path Data="{StaticResource Icon.Plus}" Style="{StaticResource Icon}" Width="13" Height="13"
+                          Margin="0,0,7,0" Stroke="White" />
+                    <TextBlock Text="Add column" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
         </Grid>
 
-        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-            <ItemsControl x:Name="BoardRoot" ItemsSource="{Binding Columns}" Margin="28,0,28,24">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
+        <Grid Grid.Row="1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                          Padding="0,0,0,4">
+                <ItemsControl x:Name="BoardRoot" ItemsSource="{Binding Columns}" Margin="26,0,26,20">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
 
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:KanbanColumnViewModel}">
-                        <Border Width="270" Margin="0,0,16,0" Background="{StaticResource SurfaceBrush}"
-                                CornerRadius="12" VerticalAlignment="Top">
-                            <Border.Effect>
-                                <DropShadowEffect Color="#1E2233" Opacity="0.05" BlurRadius="14" ShadowDepth="3" Direction="270" />
-                            </Border.Effect>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:KanbanColumnViewModel}">
+                            <Border Style="{StaticResource ColumnBorder}" Width="282" Margin="0,0,14,0"
+                                    VerticalAlignment="Stretch">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
 
-                                <!-- Column header -->
-                                <Border Grid.Row="0" CornerRadius="12,12,0,0" Padding="12,10">
-                                    <Border.Background>
-                                        <Binding Path="ColorHex" Converter="{StaticResource HexToBrushConverter}" />
-                                    </Border.Background>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
+                                    <!--
+                                        Column header. The colour the user picked is a strip beside the
+                                        name rather than a fill behind it: a full band of saturated colour
+                                        fights the cards for attention, and reads badly in dark mode.
+                                    -->
+                                    <Border Grid.Row="0" Background="{DynamicResource SurfaceAltBrush}"
+                                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                                            CornerRadius="12,12,0,0" Padding="12,10" SnapsToDevicePixels="True">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
 
-                                        <Grid Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White"
-                                                       VerticalAlignment="Center"
-                                                       Visibility="{Binding IsEditingName, Converter={StaticResource InverseBoolToVisibility}}"
-                                                       MouseLeftButtonDown="ColumnTitle_MouseLeftButtonDown" />
-                                            <TextBox x:Name="NameEditBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                                     Style="{StaticResource InlineEditTextBox}"
-                                                     Foreground="White" BorderBrush="White"
-                                                     Visibility="{Binding IsEditingName, Converter={StaticResource BoolToVisibility}}"
-                                                     LostFocus="NameEditBox_LostFocus"
-                                                     KeyDown="NameEditBox_KeyDown"
-                                                     IsVisibleChanged="NameEditBox_IsVisibleChanged" />
+                                            <Border Grid.Column="0" Width="3" Height="17" CornerRadius="2"
+                                                    Margin="0,0,9,0" VerticalAlignment="Center"
+                                                    Background="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}" />
+
+                                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                           Background="Transparent" ToolTip="Double-click to rename"
+                                                           Visibility="{Binding IsEditingName, Converter={StaticResource InverseBoolToVisibility}}"
+                                                           MouseLeftButtonDown="ColumnTitle_MouseLeftButtonDown" />
+                                                <TextBox x:Name="NameEditBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                         Style="{StaticResource InlineEditTextBox}"
+                                                         beh:FocusBehavior.SelectAllWhenVisible="True"
+                                                         Visibility="{Binding IsEditingName, Converter={StaticResource BoolToVisibility}}"
+                                                         LostFocus="NameEditBox_LostFocus"
+                                                         KeyDown="NameEditBox_KeyDown" />
+                                            </Grid>
+
+                                            <!-- State the column is in, shown only when it is in it -->
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                                                        Margin="6,0,2,0">
+                                                <Path Data="{StaticResource Icon.Star}" Width="12" Height="12"
+                                                      Style="{StaticResource IconFilled}" Margin="0,0,6,0"
+                                                      Fill="{DynamicResource PriorityBrush}"
+                                                      ToolTip="New and incoming mail lands in this column"
+                                                      Visibility="{Binding IsDefaultTarget, Converter={StaticResource BoolToVisibility}}" />
+
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,6,0"
+                                                            ToolTip="{Binding WaitingToolTip}"
+                                                            Visibility="{Binding WaitsForReply, Converter={StaticResource BoolToVisibility}}">
+                                                    <Path Data="{StaticResource Icon.Clock}" Width="12" Height="12"
+                                                          Style="{StaticResource Icon}"
+                                                          Stroke="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding ReturnAfterDaysLabel}" FontSize="10"
+                                                               Margin="3,0,0,0" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Visibility="{Binding HasReturnTimer, Converter={StaticResource BoolToVisibility}}" />
+                                                </StackPanel>
+
+                                                <Border Style="{StaticResource CountBadge}"
+                                                        ToolTip="Cards in this column">
+                                                    <TextBlock Text="{Binding Cards.Count}" Style="{StaticResource BadgeText}" />
+                                                </Border>
+                                            </StackPanel>
+
+                                            <Button x:Name="ColumnMenuButton" Grid.Column="3"
+                                                    Style="{StaticResource IconButton}" Width="24" Height="24"
+                                                    ToolTip="Column options" Command="{Binding ToggleMenuCommand}">
+                                                <Path Data="{StaticResource Icon.MoreFilled}"
+                                                      Style="{StaticResource IconFilled}" Width="14" Height="14" />
+                                            </Button>
+
+                                            <!-- Everything the column can be told to do -->
+                                            <Popup Grid.Column="3" IsOpen="{Binding IsMenuOpen}"
+                                                   PlacementTarget="{Binding ElementName=ColumnMenuButton}"
+                                                   Placement="Bottom" HorizontalOffset="-176" StaysOpen="False"
+                                                   AllowsTransparency="True">
+                                                <Border Style="{StaticResource PopupCard}" Padding="6" Width="200">
+                                                    <StackPanel>
+                                                        <Button Style="{StaticResource MenuItemButton}"
+                                                                Command="{Binding BeginRenameCommand}" Content="Rename" />
+                                                        <Button Style="{StaticResource MenuItemButton}"
+                                                                Command="{Binding SetAsDefaultCommand}"
+                                                                Content="Make default target"
+                                                                ToolTip="New and incoming mail lands here" />
+                                                        <Button Style="{StaticResource MenuItemButton}"
+                                                                Command="{Binding OpenWaitSettingsCommand}"
+                                                                Content="Waiting for reply…" />
+                                                        <Button Style="{StaticResource MenuItemButton}"
+                                                                Command="{Binding OpenColorPickerCommand}"
+                                                                Content="Colour…" />
+
+                                                        <Border Style="{StaticResource Divider}" Margin="4,5" />
+
+                                                        <Button Style="{StaticResource MenuItemButton}"
+                                                                Command="{Binding MoveLeftCommand}" Content="Move left" />
+                                                        <Button Style="{StaticResource MenuItemButton}"
+                                                                Command="{Binding MoveRightCommand}" Content="Move right" />
+
+                                                        <Border Style="{StaticResource Divider}" Margin="4,5" />
+
+                                                        <Button Style="{StaticResource DangerMenuItemButton}"
+                                                                Command="{Binding RemoveCommand}"
+                                                                Content="Remove column"
+                                                                ToolTip="Cards move to the nearest column" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Popup>
+
+                                            <Popup Grid.Column="3" IsOpen="{Binding IsColorPickerOpen}"
+                                                   PlacementTarget="{Binding ElementName=ColumnMenuButton}"
+                                                   Placement="Bottom" HorizontalOffset="-136" StaysOpen="False"
+                                                   AllowsTransparency="True">
+                                                <Border Style="{StaticResource PopupCard}" Padding="9">
+                                                    <ItemsControl ItemsSource="{Binding Palette}" Width="140">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <UniformGrid Columns="4" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Button Style="{StaticResource ColorSwatchButton}"
+                                                                        Background="{Binding Converter={StaticResource HexToBrushConverter}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        Command="{Binding DataContext.SetColorCommand,
+                                                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </Border>
+                                            </Popup>
+
+                                            <!-- Waiting-for-reply settings -->
+                                            <Popup Grid.Column="3" IsOpen="{Binding IsWaitSettingsOpen}"
+                                                   PlacementTarget="{Binding ElementName=ColumnMenuButton}"
+                                                   Placement="Bottom" HorizontalOffset="-258" StaysOpen="False"
+                                                   AllowsTransparency="True">
+                                                <Border Style="{StaticResource PopupCard}" Padding="14" Width="252">
+                                                    <StackPanel>
+                                                        <CheckBox IsChecked="{Binding WaitsForReply}">
+                                                            <TextBlock Text="Waiting for reply" Style="{StaticResource FieldLabel}" />
+                                                        </CheckBox>
+                                                        <TextBlock Style="{StaticResource Caption}" Margin="0,7,0,12"
+                                                                   Text="A reply in a conversation parked here sends the whole conversation back to the default column." />
+
+                                                        <StackPanel IsEnabled="{Binding WaitsForReply}">
+                                                            <TextBlock Text="Return even without a reply"
+                                                                       Style="{StaticResource FieldLabel}" FontSize="11.5" />
+
+                                                            <Grid Margin="0,8,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="After (days)" Margin="0,0,8,0"
+                                                                           Style="{StaticResource Caption}" VerticalAlignment="Center" />
+                                                                <TextBox Grid.Column="1" FontSize="12"
+                                                                         ToolTip="Leave empty to wait indefinitely"
+                                                                         Text="{Binding ReturnAfterDaysText, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </Grid>
+
+                                                            <Grid Margin="0,7,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="At (HH:mm)" Margin="0,0,8,0"
+                                                                           Style="{StaticResource Caption}" VerticalAlignment="Center" />
+                                                                <TextBox Grid.Column="1" FontSize="12"
+                                                                         ToolTip="Leave empty to use the time the mail was parked"
+                                                                         Text="{Binding ReturnAtTimeText, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </Grid>
+                                                        </StackPanel>
+
+                                                        <Button Content="Apply" HorizontalAlignment="Right" Margin="0,14,0,0"
+                                                                Style="{StaticResource AccentButton}" Padding="14,6"
+                                                                Command="{Binding CommitWaitSettingsCommand}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Cards -->
+                                    <Grid Grid.Row="1">
+                                        <!-- Sits under the list, so it shows through while the column is empty -->
+                                        <Grid Margin="12,12,12,16" VerticalAlignment="Top"
+                                              Visibility="{Binding Cards.Count, Converter={StaticResource ZeroCountToVisibilityConverter}}">
+                                            <Rectangle Style="{StaticResource EmptyStateOutline}" MinHeight="74" />
+                                            <TextBlock Text="Drag mail here" Style="{StaticResource Caption}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Grid>
 
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button ToolTip="Set as the target for new/incoming mail"
-                                                    Style="{StaticResource FlatButton}" FontSize="12"
-                                                    Command="{Binding SetAsDefaultCommand}">
-                                                <TextBlock>
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="☆" />
-                                                            <Setter Property="Foreground" Value="White" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsDefaultTarget}" Value="True">
-                                                                    <Setter Property="Text" Value="★" />
-                                                                    <Setter Property="Foreground" Value="Gold" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </Button>
-                                            <Button x:Name="WaitButton" ToolTip="{Binding WaitingToolTip}"
-                                                    Style="{StaticResource FlatButton}" FontSize="11"
-                                                    Command="{Binding ToggleWaitSettingsCommand}">
-                                                <TextBlock Text="{Binding WaitingBadge}" Foreground="White">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <!-- Dimmed until the column actually waits for something. -->
-                                                            <Setter Property="Opacity" Value="0.45" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding WaitsForReply}" Value="True">
-                                                                    <Setter Property="Opacity" Value="1" />
-                                                                    <Setter Property="FontWeight" Value="Bold" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </Button>
-                                            <Button x:Name="ColorSwatchButton" ToolTip="Change column color"
-                                                    Style="{StaticResource FlatButton}"
-                                                    Command="{Binding ToggleColorPickerCommand}">
-                                                <Ellipse Width="12" Height="12" Stroke="White" StrokeThickness="1">
-                                                    <Ellipse.Fill>
-                                                        <Binding Path="ColorHex" Converter="{StaticResource HexToBrushConverter}" />
-                                                    </Ellipse.Fill>
-                                                </Ellipse>
-                                            </Button>
-                                            <Button Content="◀" ToolTip="Move left" Style="{StaticResource FlatButton}"
-                                                    Foreground="White" FontSize="10" Command="{Binding MoveLeftCommand}" />
-                                            <Button Content="▶" ToolTip="Move right" Style="{StaticResource FlatButton}"
-                                                    Foreground="White" FontSize="10" Command="{Binding MoveRightCommand}" />
-                                            <Button Content="✕" ToolTip="Remove column" Style="{StaticResource FlatButton}"
-                                                    Foreground="White" FontSize="10" Command="{Binding RemoveCommand}" />
-                                        </StackPanel>
-
-                                        <Popup Grid.Column="0" IsOpen="{Binding IsColorPickerOpen}"
-                                               PlacementTarget="{Binding ElementName=ColorSwatchButton}"
-                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                                                    BorderThickness="1" CornerRadius="8" Padding="8" Margin="0,4,0,0">
-                                                <Border.Effect>
-                                                    <DropShadowEffect Color="#1E2233" Opacity="0.18" BlurRadius="12" ShadowDepth="3" Direction="270" />
-                                                </Border.Effect>
-                                                <UniformGrid Columns="4" Rows="2" Width="136">
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#5B8DEF">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#5B8DEF" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#F2A93B">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#F2A93B" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#B87CE0">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#B87CE0" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#4CB782">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#4CB782" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#E5566B">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#E5566B" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#2FB6C4">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#2FB6C4" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#8C93A6">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#8C93A6" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                    <Button Width="28" Height="28" Margin="3" Cursor="Hand"
-                                                            Command="{Binding SetColorCommand}" CommandParameter="#D6558C">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Ellipse Fill="#D6558C" Stroke="{StaticResource BorderBrush}" StrokeThickness="1" />
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
-                                                </UniformGrid>
-                                            </Border>
-                                        </Popup>
-
-                                        <!-- Waiting-for-reply settings -->
-                                        <Popup Grid.Column="0" IsOpen="{Binding IsWaitSettingsOpen}"
-                                               PlacementTarget="{Binding ElementName=WaitButton}"
-                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                                                    BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,4,0,0" Width="248">
-                                                <Border.Effect>
-                                                    <DropShadowEffect Color="#1E2233" Opacity="0.18" BlurRadius="12" ShadowDepth="3" Direction="270" />
-                                                </Border.Effect>
-                                                <StackPanel>
-                                                    <CheckBox IsChecked="{Binding WaitsForReply}"
-                                                              Content="Waiting for reply"
-                                                              FontWeight="SemiBold" FontSize="12.5"
-                                                              Foreground="{StaticResource TextPrimaryBrush}" />
-                                                    <TextBlock Text="A reply in a conversation parked here sends the whole conversation back to the default column."
-                                                               TextWrapping="Wrap" FontSize="11" Margin="0,6,0,10"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
-
-                                                    <StackPanel IsEnabled="{Binding WaitsForReply}">
-                                                        <TextBlock Text="Return even without a reply" FontSize="11.5" FontWeight="SemiBold"
-                                                                   Foreground="{StaticResource TextPrimaryBrush}" />
-
-                                                        <Grid Margin="0,6,0,0">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="After (days)" FontSize="11" VerticalAlignment="Center"
-                                                                       Margin="0,0,8,0" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                            <TextBox Grid.Column="1" FontSize="12" Padding="4,3"
-                                                                     ToolTip="Leave empty to wait indefinitely"
-                                                                     Text="{Binding ReturnAfterDaysText, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </Grid>
-
-                                                        <Grid Margin="0,6,0,0">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Grid.Column="0" Text="At (HH:mm)" FontSize="11" VerticalAlignment="Center"
-                                                                       Margin="0,0,8,0" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                            <TextBox Grid.Column="1" FontSize="12" Padding="4,3"
-                                                                     ToolTip="Leave empty to use the time the mail was parked"
-                                                                     Text="{Binding ReturnAtTimeText, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </Grid>
-                                                    </StackPanel>
-
-                                                    <Button Content="Apply" HorizontalAlignment="Right" Margin="0,12,0,0"
-                                                            Style="{StaticResource AccentButton}"
-                                                            Command="{Binding CommitWaitSettingsCommand}" />
-                                                </StackPanel>
-                                            </Border>
-                                        </Popup>
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding Cards}" Margin="10,10,10,4" MinHeight="90"
+                                                          Background="Transparent"
+                                                          HorizontalContentAlignment="Stretch"
+                                                          VerticalAlignment="Stretch"
+                                                          dd:DragDrop.IsDragSource="True"
+                                                          dd:DragDrop.IsDropTarget="True"
+                                                          dd:DragDrop.UseDefaultDragAdorner="True"
+                                                          dd:DragDrop.DragHandler="{Binding Board}"
+                                                          dd:DragDrop.DropHandler="{Binding Board}" />
+                                        </ScrollViewer>
                                     </Grid>
-                                </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
 
-                                <!-- Cards -->
-                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="640">
-                                    <ItemsControl ItemsSource="{Binding Cards}" Margin="10" MinHeight="60"
-                                                  Background="Transparent"
-                                                  HorizontalContentAlignment="Stretch"
-                                                  VerticalAlignment="Stretch"
-                                                  dd:DragDrop.IsDragSource="True"
-                                                  dd:DragDrop.IsDropTarget="True"
-                                                  dd:DragDrop.UseDefaultDragAdorner="True"
-                                                  dd:DragDrop.DragHandler="{Binding Board}"
-                                                  dd:DragDrop.DropHandler="{Binding Board}" />
-                                </ScrollViewer>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+            <!-- An empty board and one whose mail the search filtered out look the same otherwise -->
+            <Border Background="{DynamicResource AppBgBrush}" Padding="30"
+                    Visibility="{Binding HasNoSearchResults, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Path Data="{StaticResource Icon.Search}" Style="{StaticResource Icon}" Width="34" Height="34"
+                          Stroke="{DynamicResource BorderStrongBrush}" StrokeThickness="1.3" />
+                    <TextBlock Text="No mail matches this search" Style="{StaticResource PageSubtitle}"
+                               FontSize="14" Margin="0,14,0,0" HorizontalAlignment="Center" />
+                    <Button Content="Clear search" Style="{StaticResource OutlineButton}" Margin="0,14,0,0"
+                            HorizontalAlignment="Center" Command="{Binding ClearSearchCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

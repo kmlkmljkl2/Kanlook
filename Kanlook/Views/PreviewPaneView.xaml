@@ -8,7 +8,20 @@
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:PreviewPaneViewModel}">
 
-    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+    <UserControl.Resources>
+        <!-- Label beside a value in the message header -->
+        <Style x:Key="HeaderFieldName" TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+
+        <Style x:Key="HeaderFieldValue" TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1,0,0,0">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -16,53 +29,207 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
+            <!-- Subject, badges, close -->
             <Grid Grid.Row="0" Margin="20,18,12,10">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding Subject}" FontSize="16" FontWeight="Bold"
-                           TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" />
-                <Button Grid.Column="1" Content="✕" Style="{StaticResource FlatButton}" VerticalAlignment="Top"
-                        Command="{Binding CloseCommand}" ToolTip="Close preview" />
+
+                <Path Grid.Column="0" Data="{StaticResource Icon.Flag}" Style="{StaticResource Icon}"
+                      Width="14" Height="14" Margin="0,3,8,0" VerticalAlignment="Top"
+                      Stroke="{DynamicResource HighImportanceBrush}"
+                      ToolTip="{Binding Importance, Converter={StaticResource ImportanceToLabelConverter}}"
+                      Visibility="{Binding ShowsImportance, Converter={StaticResource BoolToVisibility}}" />
+
+                <TextBlock Grid.Column="1" Text="{Binding Subject}" FontSize="16" FontWeight="SemiBold"
+                           TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                <Button Grid.Column="2" Style="{StaticResource FlatButton}" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" ToolTip="Close preview (Esc)">
+                    <Path Data="{StaticResource Icon.Close}" Style="{StaticResource Icon}" Width="13" Height="13" />
+                </Button>
             </Grid>
 
             <StackPanel Grid.Row="1" Margin="20,0,20,12">
-                <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2">
-                    <Run Text="From: " FontWeight="SemiBold" />
-                    <Run Text="{Binding SenderDisplay, Mode=OneWay}" />
-                </TextBlock>
-                <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2"
-                           Visibility="{Binding ToNames, Converter={StaticResource NullToVisibilityConverter}}">
-                    <Run Text="To: " FontWeight="SemiBold" />
-                    <Run Text="{Binding ToNames, Mode=OneWay}" />
-                </TextBlock>
-                <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2">
-                    <Run Text="Received: " FontWeight="SemiBold" />
-                    <Run Text="{Binding ReceivedTime, Mode=OneWay, StringFormat='dddd, MMM d, yyyy h:mm tt'}" />
-                </TextBlock>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="From" Style="{StaticResource HeaderFieldName}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SenderDisplay}"
+                               Style="{StaticResource HeaderFieldValue}" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="To" Style="{StaticResource HeaderFieldName}"
+                               Visibility="{Binding ToNames, Converter={StaticResource NonEmptyStringToVisibilityConverter}}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ToNames}"
+                               Style="{StaticResource HeaderFieldValue}"
+                               Visibility="{Binding ToNames, Converter={StaticResource NonEmptyStringToVisibilityConverter}}" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Received" Style="{StaticResource HeaderFieldName}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource HeaderFieldValue}"
+                               Text="{Binding ReceivedTime, StringFormat='dddd, MMM d, yyyy h:mm tt'}" />
+                </Grid>
 
                 <!-- Wraps rather than clipping, since the pane can be dragged narrow. -->
-                <WrapPanel Margin="0,12,0,0">
-                    <Button Content="↩ Reply" Style="{StaticResource OutlineButton}" Command="{Binding ReplyCommand}" Margin="0,0,8,6" />
-                    <Button Content="↩↩ Reply All" Style="{StaticResource OutlineButton}" Command="{Binding ReplyAllCommand}" Margin="0,0,8,6" />
-                    <Button Content="➡ Forward" Style="{StaticResource OutlineButton}" Command="{Binding ForwardCommand}"
-                            Margin="0,0,8,6" />
-                    <Button Content="{Binding ReadToggleLabel}" Style="{StaticResource OutlineButton}"
-                            Command="{Binding ToggleReadCommand}" Margin="0,0,8,6" />
-                    <Button Content="🗑 Delete" Command="{Binding DeleteCommand}" Margin="0,0,8,6"
+                <WrapPanel Margin="0,14,0,0">
+                    <Button Style="{StaticResource OutlineButton}" Command="{Binding ReplyCommand}" Margin="0,0,8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Reply}" Style="{StaticResource Icon}"
+                                  Width="13" Height="13" Margin="0,0,6,0" />
+                            <TextBlock Text="Reply" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource OutlineButton}" Command="{Binding ReplyAllCommand}" Margin="0,0,8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.ReplyAll}" Style="{StaticResource Icon}"
+                                  Width="13" Height="13" Margin="0,0,6,0" />
+                            <TextBlock Text="Reply all" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource OutlineButton}" Command="{Binding ForwardCommand}" Margin="0,0,8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Forward}" Style="{StaticResource Icon}"
+                                  Width="13" Height="13" Margin="0,0,6,0" />
+                            <TextBlock Text="Forward" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource OutlineButton}" Command="{Binding ToggleReadCommand}" Margin="0,0,8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Width="13" Height="13" Margin="0,0,6,0">
+                                <Path.Style>
+                                    <Style TargetType="Path" BasedOn="{StaticResource Icon}">
+                                        <Setter Property="Data" Value="{StaticResource Icon.Check}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRead}" Value="True">
+                                                <Setter Property="Data" Value="{StaticResource Icon.EnvelopeOpen}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="{Binding ReadToggleLabel}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- The user's own priority for this mail, the same flag the card's star sets -->
+                    <Button Command="{Binding TogglePriorityCommand}" Margin="0,0,8,6"
+                            ToolTip="Held at the top of its column while priority pinning is on">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource PriorityBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource PriorityBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Star}" Width="13" Height="13" Margin="0,0,6,0">
+                                <Path.Style>
+                                    <Style TargetType="Path" BasedOn="{StaticResource Icon}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsHighPriority}" Value="True">
+                                                <Setter Property="Fill" Value="{DynamicResource PriorityBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="{Binding PriorityLabel}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding DeleteCommand}" Margin="0,0,8,6"
                             ToolTip="Move to Deleted Items">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
                                 <Style.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Trash}" Style="{StaticResource Icon}"
+                                  Width="13" Height="13" Margin="0,0,6,0" />
+                            <TextBlock Text="Delete" VerticalAlignment="Center" />
+                        </StackPanel>
                     </Button>
                 </WrapPanel>
+
+                <TextBlock Text="{Binding RespondError}" Style="{StaticResource Caption}" Margin="0,2,0,0"
+                           Foreground="{DynamicResource DangerBrush}"
+                           Visibility="{Binding RespondError, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                <!-- Note on this mail. The card behind the pane shows the same text. -->
+                <Grid Margin="0,12,0,0">
+                    <Button Style="{StaticResource CardNoteButton}" Command="{Binding BeginEditCommentCommand}"
+                            ToolTip="Edit note">
+                        <TextBlock Text="{Binding Comment}" Style="{StaticResource BodyText}" FontSize="12" />
+                    </Button>
+
+                    <Button HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Command="{Binding BeginEditCommentCommand}" ToolTip="Only you ever see this">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+                                <!-- Only offered while there is no note and none being written -->
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasComment}" Value="False" />
+                                            <Condition Binding="{Binding IsEditingComment}" Value="False" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource Icon.Note}" Style="{StaticResource Icon}"
+                                  Width="13" Height="13" Margin="0,0,6,0" />
+                            <TextBlock Text="Add a note" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <StackPanel Visibility="{Binding IsEditingComment, Converter={StaticResource BoolToVisibility}}">
+                        <TextBox Style="{StaticResource NoteTextBox}"
+                                 Text="{Binding CommentDraft, UpdateSourceTrigger=PropertyChanged}"
+                                 beh:FocusBehavior.FocusWhenVisible="True"
+                                 ToolTip="Ctrl+Enter saves, Esc discards">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Return" Modifiers="Control" Command="{Binding CommitCommentCommand}" />
+                                <KeyBinding Key="Escape" Command="{Binding CancelEditCommentCommand}" />
+                            </TextBox.InputBindings>
+                        </TextBox>
+
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="Remove" Style="{StaticResource FlatButton}"
+                                    FontSize="11.5" Padding="6,4" ToolTip="Delete this note"
+                                    Command="{Binding RemoveCommentCommand}"
+                                    Visibility="{Binding HasComment, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Grid.Column="2" Content="Save" Style="{StaticResource AccentButton}"
+                                    FontSize="11.5" Padding="14,5" Command="{Binding CommitCommentCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
 
                 <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,12,0,0"
                               Visibility="{Binding Attachments.Count, Converter={StaticResource CountToVisibilityConverter}}">
@@ -76,27 +243,32 @@
                             <Button Style="{StaticResource AttachmentChipButton}" Command="{Binding OpenCommand}"
                                     ToolTip="{Binding ToolTip}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="📄" FontSize="11" Margin="0,0,5,0" />
+                                    <Path Data="{StaticResource Icon.Document}" Style="{StaticResource Icon}"
+                                          Width="12" Height="12" Margin="0,0,6,0" />
                                     <TextBlock Text="{Binding FileName}" FontSize="11.5"
-                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
                                     <TextBlock Text="{Binding SizeDisplay, StringFormat=' · {0}'}" FontSize="11"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextMutedBrush}" />
                                 </StackPanel>
                             </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <TextBlock Text="{Binding AttachmentError}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0"
-                           Foreground="{StaticResource DangerBrush}"
+                <TextBlock Text="{Binding AttachmentError}" Style="{StaticResource Caption}" Margin="0,2,0,0"
+                           Foreground="{DynamicResource DangerBrush}"
                            Visibility="{Binding AttachmentError, Converter={StaticResource NullToVisibilityConverter}}" />
 
-                <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,12,0,0" />
+                <Border Style="{StaticResource Divider}" Margin="0,14,0,0" />
             </StackPanel>
 
-            <Grid Grid.Row="2" Margin="0,0,0,0">
+            <!--
+                Mail HTML is written for a white page, so the body keeps one whatever the app theme is -
+                re-colouring somebody else's markup does more harm than good.
+            -->
+            <Grid Grid.Row="2" Background="White">
                 <WebBrowser beh:WebBrowserHtmlBehavior.HtmlContent="{Binding HtmlBody}" />
-                <TextBlock Text="Loading…" Foreground="{StaticResource TextSecondaryBrush}"
+                <TextBlock Text="Loading…" Foreground="#6E7590" FontFamily="Segoe UI" FontSize="13"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
             </Grid>
