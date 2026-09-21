@@ -101,32 +101,24 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
 
     private async Task LoadAsync()
     {
+        MailContent content;
         try
         {
-            _summary.HtmlBody ??= await _outlook.GetHtmlBodyAsync(_summary.StoreId, _summary.EntryId);
-            HtmlBody = _summary.HtmlBody ?? "<i>(no content)</i>";
+            content = _summary.Content ??= await _outlook.GetMailContentAsync(_summary.StoreId, _summary.EntryId);
         }
         catch (Exception ex)
         {
             HtmlBody = $"<i>Couldn't load message body: {ex.Message}</i>";
-        }
-        finally
-        {
             IsLoading = false;
-        }
-
-        if (!_summary.HasAttachments)
             return;
+        }
 
-        try
-        {
-            foreach (var attachment in await _outlook.GetAttachmentsAsync(_summary.StoreId, _summary.EntryId))
-                Attachments.Add(new AttachmentViewModel(attachment, OpenAttachment));
-        }
-        catch (Exception)
-        {
-            // Best-effort - a missing attachment list isn't worth failing the whole preview over.
-        }
+        HtmlBody = string.IsNullOrEmpty(content.Html) ? "<i>(no content)</i>" : content.Html;
+        IsLoading = false;
+
+        // Only what the body doesn't already show - a picture in the message isn't a file to offer.
+        foreach (var attachment in content.Attachments)
+            Attachments.Add(new AttachmentViewModel(attachment, OpenAttachment));
     }
 
     private async void OpenAttachment(AttachmentInfo attachment)

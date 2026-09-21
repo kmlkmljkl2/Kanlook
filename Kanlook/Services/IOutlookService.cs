@@ -55,10 +55,16 @@ public interface IOutlookService : IDisposable
     /// <summary>Outlook's master category list, as category name -&gt; display hex.</summary>
     Task<IReadOnlyDictionary<string, string>> GetCategoryColorsAsync();
 
-    /// <summary>Lazily fetches the HTML body of a single mail for preview.</summary>
-    Task<string?> GetHtmlBodyAsync(string storeId, string entryId);
+    /// <summary>
+    /// Lazily fetches what the reading pane shows: the body with its inline pictures made to
+    /// display, and the attachments left over once those are accounted for.
+    /// </summary>
+    Task<MailContent> GetMailContentAsync(string storeId, string entryId);
 
-    /// <summary>Lazily fetches attachment names/sizes for a single mail for preview.</summary>
+    /// <summary>
+    /// Every attachment of a mail, inline pictures included - for indexing, where a picture the
+    /// body happens to display is still a file with a searchable name.
+    /// </summary>
     Task<List<AttachmentInfo>> GetAttachmentsAsync(string storeId, string entryId);
 
     /// <summary>

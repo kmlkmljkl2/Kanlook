@@ -75,8 +75,8 @@ public sealed partial class MailSummary
     /// <summary>Outlook's conversation topic (the subject with Re:/Fw: prefixes already stripped).</summary>
     public string ConversationTopic { get; init; } = "";
 
-    /// <summary>Lazily populated the first time the mail is previewed.</summary>
-    public string? HtmlBody { get; set; }
+    /// <summary>Body and attachment list, lazily populated the first time the mail is previewed.</summary>
+    public MailContent? Content { get; set; }
 
     /// <summary>
     /// Key used to group mails into one conversation tile. Prefers Outlook's conversation id and

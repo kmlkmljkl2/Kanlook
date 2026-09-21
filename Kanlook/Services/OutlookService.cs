@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Threading;
 using Kanlook.Models;
 
@@ -17,7 +18,7 @@ namespace Kanlook.Services;
 /// <c>*Core</c> methods below only ever run on that one thread - which is also what keeps the COM
 /// objects safe without locking.
 /// </summary>
-public sealed class OutlookService : IOutlookService
+public sealed partial class OutlookService : IOutlookService
 {
     /// <summary>
     /// MAPI's long-term entry id for contents tables. A folder table's own "EntryID" column holds a
@@ -30,6 +31,9 @@ public sealed class OutlookService : IOutlookService
     private const string PrDisplayTo = "http://schemas.microsoft.com/mapi/proptag/0x0E04001F";
     private const string PrConversationId = "http://schemas.microsoft.com/mapi/proptag/0x30130102";
     private const string PrHasAttachment = "http://schemas.microsoft.com/mapi/proptag/0x0E1B000B";
+
+    /// <summary>PR_ATTACH_CONTENT_ID - what a mail's markup refers to an inline picture by.</summary>
+    private const string PrAttachContentId = "http://schemas.microsoft.com/mapi/proptag/0x3712001F";
 
     private const int OlDescending = 2;
 
@@ -575,26 +579,163 @@ public sealed class OutlookService : IOutlookService
         return summary;
     }
 
-    public Task<string?> GetHtmlBodyAsync(string storeId, string entryId) =>
-        Run(() => GetHtmlBodyCore(storeId, entryId));
+    public Task<MailContent> GetMailContentAsync(string storeId, string entryId) =>
+        Run(() => GetMailContentCore(storeId, entryId));
 
-    private string? GetHtmlBodyCore(string storeId, string entryId)
+    /// <summary>
+    /// Reads the body and sorts the attachments into the ones the body already shows and the ones
+    /// it doesn't. One item open for both, because the question "is this a picture in the message
+    /// or a file attached to it?" needs the body and the attachment in front of it at once.
+    /// </summary>
+    private MailContent GetMailContentCore(string storeId, string entryId)
     {
         EnsureConnected();
+
         dynamic item = _ns!.GetItemFromID(entryId, storeId);
         try
         {
             if (!IsMailItem(item))
-                return null;
+                return new MailContent(null, []);
 
             string? html = item.HTMLBody;
-            return string.IsNullOrEmpty(html) ? (string?)item.Body : html;
+            var isHtml = !string.IsNullOrEmpty(html);
+            var body = isHtml ? html! : (string?)item.Body ?? "";
+
+            var attachments = new List<AttachmentInfo>();
+            var inlineFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            dynamic attachmentList = item.Attachments;
+            try
+            {
+                foreach (dynamic attachment in attachmentList)
+                {
+                    try
+                    {
+                        CollectAttachment(attachment, entryId, body, attachments, inlineFiles);
+                    }
+                    catch (COMException)
+                    {
+                        // One attachment we can't read shouldn't cost us the rest of the mail.
+                    }
+                    finally
+                    {
+                        ReleaseCom(attachment);
+                    }
+                }
+            }
+            finally
+            {
+                ReleaseCom(attachmentList);
+            }
+
+            return new MailContent(isHtml ? PointAtInlineFiles(body, inlineFiles) : body, attachments);
         }
         finally
         {
             ReleaseCom(item);
         }
     }
+
+    /// <summary>
+    /// Files one attachment as either a picture the body displays or an attachment proper. An
+    /// inline one is extracted so the body has something to point at; if that fails it falls back
+    /// to being listed, which beats losing it in both places.
+    /// </summary>
+    private static void CollectAttachment(
+        dynamic attachment,
+        string entryId,
+        string body,
+        List<AttachmentInfo> attachments,
+        Dictionary<string, string> inlineFiles)
+    {
+        string fileName = attachment.FileName ?? attachment.DisplayName ?? "(unnamed attachment)";
+        string contentId = TryGetContentId(attachment);
+
+        if (contentId.Length > 0 && body.Contains("cid:" + contentId, StringComparison.OrdinalIgnoreCase))
+        {
+            string? path = TryExtractInline(attachment, entryId, fileName);
+            if (path is not null)
+            {
+                inlineFiles[contentId] = path;
+                return;
+            }
+        }
+
+        attachments.Add(new AttachmentInfo
+        {
+            FileName = fileName,
+            SizeDisplay = AttachmentInfo.FormatBytes((long)attachment.Size),
+            Index = (int)attachment.Index,
+        });
+    }
+
+    /// <summary>
+    /// The id the mail's own markup refers to this attachment by, if it has one. Plain attached
+    /// files don't, and MAPI keeps it wrapped in the angle brackets of the header it came from.
+    /// </summary>
+    private static string TryGetContentId(dynamic attachment)
+    {
+        try
+        {
+            dynamic accessor = attachment.PropertyAccessor;
+            try
+            {
+                return ((string?)accessor.GetProperty(PrAttachContentId) ?? "").Trim('<', '>');
+            }
+            finally
+            {
+                ReleaseCom(accessor);
+            }
+        }
+        catch (Exception)
+        {
+            // GetProperty throws rather than returning null for a property the attachment hasn't got.
+            return "";
+        }
+    }
+
+    /// <summary>Pulls an inline picture out to a file, or null when Outlook won't give it up.</summary>
+    private static string? TryExtractInline(dynamic attachment, string entryId, string fileName)
+    {
+        // Named by position rather than file name: a mail may carry two pictures called the same
+        // thing, and one quietly overwriting the other would show the wrong picture twice.
+        var path = BuildCachePath(entryId, $"{(int)attachment.Index}-{fileName}");
+
+        try
+        {
+            attachment.SaveAsFile(path);
+            return path;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Repoints the body's <c>cid:</c> references at the files just extracted. Matched by pattern
+    /// rather than by replacing each id in turn, so one id being the start of another can't have
+    /// the wrong picture substituted, and every spelling of the reference - quoted, unquoted,
+    /// percent-encoded - is caught by the same pass. References we have no file for are left
+    /// exactly as they were.
+    /// </summary>
+    private static string PointAtInlineFiles(string html, Dictionary<string, string> inlineFiles)
+    {
+        if (inlineFiles.Count == 0)
+            return html;
+
+        return CidReference().Replace(html, match =>
+        {
+            var id = match.Groups[1].Value;
+            return inlineFiles.TryGetValue(id, out var path) ||
+                   inlineFiles.TryGetValue(Uri.UnescapeDataString(id), out path)
+                ? new Uri(path).AbsoluteUri
+                : match.Value;
+        });
+    }
+
+    [GeneratedRegex("""cid:([^"'\s>)]+)""", RegexOptions.IgnoreCase)]
+    private static partial Regex CidReference();
 
     public Task<List<AttachmentInfo>> GetAttachmentsAsync(string storeId, string entryId) =>
         Run(() => GetAttachmentsCore(storeId, entryId));
