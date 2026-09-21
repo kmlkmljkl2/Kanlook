@@ -94,10 +94,17 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
         _onSetRead = onSetRead;
         _onAnnotationsChanged = onAnnotationsChanged;
 
+        // The pane's frame - subject, sender, the buttons - is on screen straight away; the body
+        // and attachment list arrive when Outlook has them.
+        _ = LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
         try
         {
-            summary.HtmlBody ??= outlook.GetHtmlBody(summary.StoreId, summary.EntryId);
-            HtmlBody = summary.HtmlBody ?? "<i>(no content)</i>";
+            _summary.HtmlBody ??= await _outlook.GetHtmlBodyAsync(_summary.StoreId, _summary.EntryId);
+            HtmlBody = _summary.HtmlBody ?? "<i>(no content)</i>";
         }
         catch (Exception ex)
         {
@@ -108,26 +115,26 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
             IsLoading = false;
         }
 
-        if (summary.HasAttachments)
+        if (!_summary.HasAttachments)
+            return;
+
+        try
         {
-            try
-            {
-                foreach (var attachment in outlook.GetAttachments(summary.StoreId, summary.EntryId))
-                    Attachments.Add(new AttachmentViewModel(attachment, OpenAttachment));
-            }
-            catch (Exception)
-            {
-                // Best-effort - a missing attachment list isn't worth failing the whole preview over.
-            }
+            foreach (var attachment in await _outlook.GetAttachmentsAsync(_summary.StoreId, _summary.EntryId))
+                Attachments.Add(new AttachmentViewModel(attachment, OpenAttachment));
+        }
+        catch (Exception)
+        {
+            // Best-effort - a missing attachment list isn't worth failing the whole preview over.
         }
     }
 
-    private void OpenAttachment(AttachmentInfo attachment)
+    private async void OpenAttachment(AttachmentInfo attachment)
     {
         try
         {
             AttachmentError = null;
-            _outlook.OpenAttachment(_summary.StoreId, _summary.EntryId, attachment.Index);
+            await _outlook.OpenAttachmentAsync(_summary.StoreId, _summary.EntryId, attachment.Index);
         }
         catch (Exception ex)
         {
@@ -201,20 +208,20 @@ public sealed partial class PreviewPaneViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Reply() => TryRespond(() => _outlook.Reply(_summary.StoreId, _summary.EntryId));
+    private Task Reply() => TryRespondAsync(() => _outlook.ReplyAsync(_summary.StoreId, _summary.EntryId));
 
     [RelayCommand]
-    private void ReplyAll() => TryRespond(() => _outlook.ReplyAll(_summary.StoreId, _summary.EntryId));
+    private Task ReplyAll() => TryRespondAsync(() => _outlook.ReplyAllAsync(_summary.StoreId, _summary.EntryId));
 
     [RelayCommand]
-    private void Forward() => TryRespond(() => _outlook.Forward(_summary.StoreId, _summary.EntryId));
+    private Task Forward() => TryRespondAsync(() => _outlook.ForwardAsync(_summary.StoreId, _summary.EntryId));
 
-    private void TryRespond(Action action)
+    private async Task TryRespondAsync(Func<Task> action)
     {
         try
         {
             RespondError = null;
-            action();
+            await action();
         }
         catch (Exception ex)
         {

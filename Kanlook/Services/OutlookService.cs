@@ -3,14 +3,19 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Windows.Threading;
 using Kanlook.Models;
 
 namespace Kanlook.Services;
 
 /// <summary>
 /// Talks to the locally installed/running Outlook via late-bound COM automation (no PIA/type-library
-/// reference needed - just the "Outlook.Application" ProgID). All calls must happen on the WPF UI
-/// thread (STA), which is the apartment COM requires.
+/// reference needed - just the "Outlook.Application" ProgID).
+///
+/// COM is apartment-bound, so every call is marshalled onto the service's own STA thread (see
+/// <see cref="ComWorker"/>) and handed back as a task. Nothing here touches the UI thread, and the
+/// <c>*Core</c> methods below only ever run on that one thread - which is also what keeps the COM
+/// objects safe without locking.
 /// </summary>
 public sealed class OutlookService : IOutlookService
 {
@@ -20,14 +25,39 @@ public sealed class OutlookService : IOutlookService
     /// </summary>
     private const string PrLongTermEntryIdFromTable = "http://schemas.microsoft.com/mapi/proptag/0x66700102";
 
+    private const string PrSenderSmtpAddress = "http://schemas.microsoft.com/mapi/proptag/0x5D01001F";
+    private const string PrSenderEmailAddress = "http://schemas.microsoft.com/mapi/proptag/0x0C1F001F";
+    private const string PrDisplayTo = "http://schemas.microsoft.com/mapi/proptag/0x0E04001F";
+    private const string PrConversationId = "http://schemas.microsoft.com/mapi/proptag/0x30130102";
+    private const string PrHasAttachment = "http://schemas.microsoft.com/mapi/proptag/0x0E1B000B";
+
     private const int OlDescending = 2;
+
+    /// <summary>OlDefaultFolders.olFolderSentMail.</summary>
+    private const int OlFolderSentMail = 5;
+
+    private readonly ComWorker _worker = new();
+    private readonly Dictionary<string, string> _categoryColors = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Table columns a store refused, per store id. Stores differ in what they'll hand over and a
+    /// refusal costs a COM exception, so we only ever pay for each one once.
+    /// </summary>
+    private readonly Dictionary<string, HashSet<string>> _unsupportedColumns = new(StringComparer.Ordinal);
 
     private dynamic? _app;
     private dynamic? _ns;
     private string? _defaultStoreId;
-    private readonly Dictionary<string, string> _categoryColors = new(StringComparer.OrdinalIgnoreCase);
 
-    public void Connect()
+    private Task<T> Run<T>(Func<T> work, DispatcherPriority priority = DispatcherPriority.Normal) =>
+        _worker.RunAsync(() => InvokeWithRetry(work), priority);
+
+    private Task Run(Action work, DispatcherPriority priority = DispatcherPriority.Normal) =>
+        _worker.RunAsync(() => InvokeWithRetry(work), priority);
+
+    public Task ConnectAsync() => _worker.RunAsync(Connect);
+
+    private void Connect()
     {
         try
         {
@@ -46,8 +76,8 @@ public sealed class OutlookService : IOutlookService
         LoadCategoryColors();
     }
 
-    /// <summary>Outlook's master category list, as category name -&gt; display hex.</summary>
-    public IReadOnlyDictionary<string, string> GetCategoryColors() => _categoryColors;
+    public Task<IReadOnlyDictionary<string, string>> GetCategoryColorsAsync() =>
+        Run<IReadOnlyDictionary<string, string>>(() => new Dictionary<string, string>(_categoryColors, StringComparer.OrdinalIgnoreCase));
 
     private void LoadCategoryColors()
     {
@@ -110,9 +140,9 @@ public sealed class OutlookService : IOutlookService
         _ => "#8C93A6",  // None
     };
 
-    public List<MailFolderNode> BuildFolderTree() => InvokeWithRetry(BuildFolderTreeCore);
+    public Task<List<MailFolderNode>> GetStoreRootsAsync() => Run(GetStoreRootsCore);
 
-    private List<MailFolderNode> BuildFolderTreeCore()
+    private List<MailFolderNode> GetStoreRootsCore()
     {
         EnsureConnected();
         var roots = new List<MailFolderNode>();
@@ -122,10 +152,15 @@ public sealed class OutlookService : IOutlookService
             try
             {
                 string storeId = store.StoreID;
-                var isShared = storeId != _defaultStoreId;
                 dynamic root = store.GetRootFolder();
-                roots.Add(BuildNode(root, isShared));
-                ReleaseCom(root);
+                try
+                {
+                    roots.Add(ToNode(root, storeId != _defaultStoreId));
+                }
+                finally
+                {
+                    ReleaseCom(root);
+                }
             }
             catch (COMException)
             {
@@ -140,42 +175,92 @@ public sealed class OutlookService : IOutlookService
         return roots;
     }
 
-    private static MailFolderNode BuildNode(dynamic folder, bool isShared)
-    {
-        var node = new MailFolderNode
-        {
-            EntryId = (string)folder.EntryID,
-            StoreId = (string)folder.StoreID,
-            Name = (string)folder.Name,
-            IsSharedMailbox = isShared,
-        };
+    public Task<List<MailFolderNode>> GetChildFoldersAsync(string storeId, string folderEntryId) =>
+        Run(() => GetChildFoldersCore(storeId, folderEntryId));
 
+    private List<MailFolderNode> GetChildFoldersCore(string storeId, string folderEntryId)
+    {
+        EnsureConnected();
+        var children = new List<MailFolderNode>();
+        var isShared = storeId != _defaultStoreId;
+
+        dynamic folder = _ns!.GetFolderFromID(folderEntryId, storeId);
         try
         {
-            foreach (dynamic child in folder.Folders)
+            dynamic folders = folder.Folders;
+            try
             {
-                try
+                foreach (dynamic child in folders)
                 {
-                    node.Children.Add(BuildNode(child, isShared));
-                }
-                catch (COMException)
-                {
-                    // Skip folders we can't enumerate (e.g. permission-restricted).
-                }
-                finally
-                {
-                    ReleaseCom(child);
+                    try
+                    {
+                        children.Add(ToNode(child, isShared));
+                    }
+                    catch (COMException)
+                    {
+                        // Skip folders we can't read (e.g. permission-restricted).
+                    }
+                    finally
+                    {
+                        ReleaseCom(child);
+                    }
                 }
             }
+            finally
+            {
+                ReleaseCom(folders);
+            }
         }
-        catch (COMException) { }
+        finally
+        {
+            ReleaseCom(folder);
+        }
 
-        return node;
+        return children;
     }
 
-    public List<MailSummary> GetMailSummaries(string storeId, string folderEntryId, int maxCount = 300) =>
-        InvokeWithRetry(() => GetMailSummariesCore(storeId, folderEntryId, maxCount));
+    private static MailFolderNode ToNode(dynamic folder, bool isShared) => new()
+    {
+        EntryId = (string)folder.EntryID,
+        StoreId = (string)folder.StoreID,
+        Name = (string)folder.Name,
+        IsSharedMailbox = isShared,
+        HasChildren = HasChildFolders(folder),
+    };
 
+    /// <summary>
+    /// Whether a folder is worth an expander. Counting is one round-trip; enumerating the children
+    /// to find out would be the whole cost of the eager tree we're trying to avoid.
+    /// </summary>
+    private static bool HasChildFolders(dynamic folder)
+    {
+        try
+        {
+            dynamic folders = folder.Folders;
+            try
+            {
+                return (int)folders.Count > 0;
+            }
+            finally
+            {
+                ReleaseCom(folders);
+            }
+        }
+        catch (COMException)
+        {
+            return false;
+        }
+    }
+
+    public Task<List<MailSummary>> GetMailSummariesAsync(string storeId, string folderEntryId, int maxCount) =>
+        Run(() => GetMailSummariesCore(storeId, folderEntryId, maxCount));
+
+    /// <summary>
+    /// One table read for the whole window. Walking <c>Folder.Items</c> and opening each mail
+    /// instead costs a cross-process call per property per item - on a large mailbox that is
+    /// minutes, which is what this replaces. The body is the one field a table can't carry;
+    /// <see cref="MailBodyLoader"/> fills it in afterwards.
+    /// </summary>
     private List<MailSummary> GetMailSummariesCore(string storeId, string folderEntryId, int maxCount)
     {
         EnsureConnected();
@@ -184,26 +269,71 @@ public sealed class OutlookService : IOutlookService
         dynamic folder = _ns!.GetFolderFromID(folderEntryId, storeId);
         try
         {
-            dynamic items = folder.Items;
-            items.Sort("[ReceivedTime]", true);
-
-            var count = 0;
-            foreach (dynamic raw in items)
+            dynamic table = folder.GetTable();
+            try
             {
-                if (count >= maxCount)
-                {
-                    ReleaseCom(raw);
-                    break;
-                }
+                dynamic columns = table.Columns;
+                columns.RemoveAll();
 
-                // MailItem.Class == 43 (olMail). Other item types - meeting requests, reports - aren't board material.
-                if (IsMailItem(raw))
-                {
-                    result.Add(ToSummary(raw, storeId));
-                    count++;
-                }
+                var schema = new TableSchema(columns, UnsupportedColumnsFor(storeId));
+                var entryId = schema.Add(PrLongTermEntryIdFromTable);
+                var messageClass = schema.Add("MessageClass");
+                var subject = schema.Add("Subject");
+                var senderName = schema.Add("SenderName");
 
-                ReleaseCom(raw);
+                // The SMTP address where the store keeps one; Outlook's own SenderEmailAddress hands
+                // back an X500 path for Exchange senders, which is no use on a card.
+                var senderEmail = schema.AddAny(PrSenderSmtpAddress, "SenderEmailAddress", PrSenderEmailAddress);
+                var toNames = schema.AddAny("To", PrDisplayTo);
+                var receivedTime = schema.Add("ReceivedTime");
+                var creationTime = schema.Add("CreationTime");
+                var unread = schema.Add("UnRead");
+                var categories = schema.Add("Categories");
+                var conversationTopic = schema.Add("ConversationTopic");
+                var conversationId = schema.Add(PrConversationId);
+                var importance = schema.Add("Importance");
+                var hasAttachment = schema.AddAny(PrHasAttachment, "HasAttachment");
+                ReleaseCom(columns);
+
+                table.Sort("[ReceivedTime]", OlDescending);
+
+                if (table.GetArray(maxCount) is not object[,] rows)
+                    return result;
+
+                var firstColumn = rows.GetLowerBound(1);
+                for (var index = rows.GetLowerBound(0); index <= rows.GetUpperBound(0); index++)
+                {
+                    var row = new TableRow(rows, index, firstColumn);
+
+                    var id = row.Hex(entryId);
+                    if (id.Length == 0 || !IsMailClass(row.Text(messageClass)))
+                        continue;
+
+                    var senderDisplay = row.Text(senderName);
+                    var mailSubject = row.Text(subject);
+
+                    result.Add(new MailSummary
+                    {
+                        EntryId = id,
+                        StoreId = storeId,
+                        Subject = mailSubject.Length == 0 ? "(no subject)" : mailSubject,
+                        SenderName = senderDisplay.Length == 0 ? "(unknown sender)" : senderDisplay,
+                        SenderEmail = row.Text(senderEmail),
+                        ToNames = row.Text(toNames),
+                        ReceivedTime = row.Time(receivedTime),
+                        CreationTime = row.Time(creationTime),
+                        IsRead = !row.Flag(unread),
+                        Categories = row.Text(categories),
+                        ConversationTopic = row.Text(conversationTopic),
+                        ConversationId = row.Hex(conversationId),
+                        HasAttachments = row.Flag(hasAttachment),
+                        Importance = ToImportance(row.Number(importance, 1)),
+                    });
+                }
+            }
+            finally
+            {
+                ReleaseCom(table);
             }
         }
         finally
@@ -214,24 +344,16 @@ public sealed class OutlookService : IOutlookService
         return result;
     }
 
-    /// <summary>
-    /// Reads an optional COM string property. Not every store/item exposes conversation properties
-    /// (very old items, some public folders), and a missing one throws rather than returning null.
-    /// </summary>
-    private static string TryGetString(Func<dynamic> get)
+    private HashSet<string> UnsupportedColumnsFor(string storeId)
     {
-        try
-        {
-            return (string?)get() ?? "";
-        }
-        catch (Exception)
-        {
-            return "";
-        }
+        if (!_unsupportedColumns.TryGetValue(storeId, out var refused))
+            _unsupportedColumns[storeId] = refused = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        return refused;
     }
 
-    public List<MailItemState> GetFolderState(string storeId, string folderEntryId, int maxCount = 300) =>
-        InvokeWithRetry(() => GetFolderStateCore(storeId, folderEntryId, maxCount));
+    public Task<List<MailItemState>> GetFolderStateAsync(string storeId, string folderEntryId, int maxCount) =>
+        Run(() => GetFolderStateCore(storeId, folderEntryId, maxCount));
 
     private List<MailItemState> GetFolderStateCore(string storeId, string folderEntryId, int maxCount)
     {
@@ -261,29 +383,22 @@ public sealed class OutlookService : IOutlookService
                     return result;
 
                 var firstColumn = rows.GetLowerBound(1);
-                for (var row = rows.GetLowerBound(0); row <= rows.GetUpperBound(0); row++)
+                for (var index = rows.GetLowerBound(0); index <= rows.GetUpperBound(0); index++)
                 {
-                    var entryId = rows[row, firstColumn] switch
-                    {
-                        byte[] bytes => Convert.ToHexString(bytes),
-                        string text => text,
-                        _ => null,
-                    };
+                    var row = new TableRow(rows, index, firstColumn);
 
-                    if (entryId is null)
+                    var entryId = row.Hex(0);
+                    if (entryId.Length == 0)
                         continue;
 
-                    // Matches IsMailItem. Non-mail rows are reported too (flagged), so the caller can
-                    // see how far back the snapshot reaches - it only ever holds maxCount rows.
-                    var isMail = rows[row, firstColumn + 1] is string messageClass &&
-                                 messageClass.StartsWith("IPM.Note", StringComparison.OrdinalIgnoreCase);
-
+                    // Non-mail rows are reported too (flagged), so the caller can see how far back
+                    // the snapshot reaches - it only ever holds maxCount rows.
                     result.Add(new MailItemState(
                         entryId,
-                        rows[row, firstColumn + 2] as DateTime? ?? DateTime.MinValue,
-                        rows[row, firstColumn + 3] as string ?? "",
-                        rows[row, firstColumn + 4] is not bool unread || !unread,
-                        isMail));
+                        row.Time(2),
+                        row.Text(3),
+                        !row.Flag(4),
+                        IsMailClass(row.Text(1))));
                 }
             }
             finally
@@ -299,8 +414,8 @@ public sealed class OutlookService : IOutlookService
         return result;
     }
 
-    public MailSummary? GetMailSummary(string storeId, string entryId) =>
-        InvokeWithRetry(() => GetMailSummaryCore(storeId, entryId));
+    public Task<MailSummary?> GetMailSummaryAsync(string storeId, string entryId) =>
+        Run(() => GetMailSummaryCore(storeId, entryId));
 
     private MailSummary? GetMailSummaryCore(string storeId, string entryId)
     {
@@ -316,11 +431,25 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
-    /// <summary>OlDefaultFolders.olFolderSentMail.</summary>
-    private const int OlFolderSentMail = 5;
+    public Task<string?> GetBodyTextAsync(string storeId, string entryId) =>
+        Run(() => GetBodyTextCore(storeId, entryId), DispatcherPriority.Background);
 
-    public string? GetSentItemsFolderId(string storeId) =>
-        InvokeWithRetry(() => GetSentItemsFolderIdCore(storeId));
+    private string? GetBodyTextCore(string storeId, string entryId)
+    {
+        EnsureConnected();
+        dynamic item = _ns!.GetItemFromID(entryId, storeId);
+        try
+        {
+            return IsMailItem(item) ? (string?)item.Body : null;
+        }
+        finally
+        {
+            ReleaseCom(item);
+        }
+    }
+
+    public Task<string?> GetSentItemsFolderIdAsync(string storeId) =>
+        Run(() => GetSentItemsFolderIdCore(storeId), DispatcherPriority.Background);
 
     private string? GetSentItemsFolderIdCore(string storeId)
     {
@@ -375,10 +504,15 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
+    /// <summary>Matches <see cref="IsMailItem"/>, from a table's MessageClass column.</summary>
+    private static bool IsMailClass(string messageClass) =>
+        messageClass.StartsWith("IPM.Note", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsMailItem(dynamic item)
     {
         try
         {
+            // MailItem.Class == 43 (olMail). Other item types - meeting requests, reports - aren't board material.
             return (int)item.Class == 43;
         }
         catch (Exception)
@@ -387,20 +521,39 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
-    private const int SearchBodyMaxChars = 8_000;
+    private static MailImportance ToImportance(int olImportance) => olImportance switch
+    {
+        2 => MailImportance.High,
+        0 => MailImportance.Low,
+        _ => MailImportance.Normal,
+    };
 
+    /// <summary>
+    /// Reads an optional COM string property. Not every store/item exposes conversation properties
+    /// (very old items, some public folders), and a missing one throws rather than returning null.
+    /// </summary>
+    private static string TryGetString(Func<dynamic> get)
+    {
+        try
+        {
+            return (string?)get() ?? "";
+        }
+        catch (Exception)
+        {
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// Builds a summary by opening the item. Only used for single mails - a new arrival, or a reply
+    /// picked up in Sent Items - where the extra round-trips buy a body straight away.
+    /// </summary>
     private static MailSummary ToSummary(dynamic mail, string storeId)
     {
-        string body = mail.Body ?? "";
-        var flattened = body.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        var snippet = flattened.Length > 160 ? flattened[..160] + "…" : flattened;
-        var searchBody = flattened.Length > SearchBodyMaxChars ? flattened[..SearchBodyMaxChars] : flattened;
-
         string subject = mail.Subject ?? "";
         string senderName = mail.SenderName ?? "";
-        int importance = (int)mail.Importance;
 
-        return new MailSummary
+        var summary = new MailSummary
         {
             ConversationId = TryGetString(() => mail.ConversationID),
             ConversationTopic = TryGetString(() => mail.ConversationTopic),
@@ -413,20 +566,17 @@ public sealed class OutlookService : IOutlookService
             ToNames = mail.To ?? "",
             ReceivedTime = mail.ReceivedTime,
             CreationTime = mail.CreationTime,
-            Snippet = snippet,
-            SearchBody = searchBody,
             IsRead = !(bool)mail.UnRead,
             HasAttachments = mail.Attachments != null && (int)mail.Attachments.Count > 0,
-            Importance = importance switch
-            {
-                2 => MailImportance.High,
-                0 => MailImportance.Low,
-                _ => MailImportance.Normal,
-            },
+            Importance = ToImportance((int)mail.Importance),
         };
+
+        summary.SetBodyText(TryGetString(() => mail.Body));
+        return summary;
     }
 
-    public string? GetHtmlBody(string storeId, string entryId) => InvokeWithRetry(() => GetHtmlBodyCore(storeId, entryId));
+    public Task<string?> GetHtmlBodyAsync(string storeId, string entryId) =>
+        Run(() => GetHtmlBodyCore(storeId, entryId));
 
     private string? GetHtmlBodyCore(string storeId, string entryId)
     {
@@ -446,8 +596,8 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
-    public List<AttachmentInfo> GetAttachments(string storeId, string entryId) =>
-        InvokeWithRetry(() => GetAttachmentsCore(storeId, entryId));
+    public Task<List<AttachmentInfo>> GetAttachmentsAsync(string storeId, string entryId) =>
+        Run(() => GetAttachmentsCore(storeId, entryId));
 
     private List<AttachmentInfo> GetAttachmentsCore(string storeId, string entryId)
     {
@@ -489,15 +639,15 @@ public sealed class OutlookService : IOutlookService
         return result;
     }
 
-    public string OpenAttachment(string storeId, string entryId, int attachmentIndex)
+    public async Task<string> OpenAttachmentAsync(string storeId, string entryId, int attachmentIndex)
     {
-        var path = SaveAttachment(storeId, entryId, attachmentIndex);
+        var path = await SaveAttachmentAsync(storeId, entryId, attachmentIndex);
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         return Path.GetFileName(path);
     }
 
-    public string SaveAttachment(string storeId, string entryId, int attachmentIndex) =>
-        InvokeWithRetry(() => SaveAttachmentCore(storeId, entryId, attachmentIndex));
+    public Task<string> SaveAttachmentAsync(string storeId, string entryId, int attachmentIndex) =>
+        Run(() => SaveAttachmentCore(storeId, entryId, attachmentIndex));
 
     /// <summary>
     /// Outlook can only hand an attachment over as a file, so extract it to a per-mail cache folder.
@@ -536,8 +686,8 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
-    public void DeleteMail(string storeId, string entryId) =>
-        InvokeWithRetry(() => DeleteMailCore(storeId, entryId));
+    public Task DeleteMailAsync(string storeId, string entryId) =>
+        Run(() => DeleteMailCore(storeId, entryId));
 
     private void DeleteMailCore(string storeId, string entryId)
     {
@@ -557,8 +707,8 @@ public sealed class OutlookService : IOutlookService
         }
     }
 
-    public void SetRead(string storeId, string entryId, bool isRead) =>
-        InvokeWithRetry(() => SetReadCore(storeId, entryId, isRead));
+    public Task SetReadAsync(string storeId, string entryId, bool isRead) =>
+        Run(() => SetReadCore(storeId, entryId, isRead));
 
     private void SetReadCore(string storeId, string entryId, bool isRead)
     {
@@ -597,14 +747,14 @@ public sealed class OutlookService : IOutlookService
         return Path.Combine(dir, safeName);
     }
 
-    public void Reply(string storeId, string entryId) =>
-        InvokeWithRetry(() => RespondTo(storeId, entryId, mail => mail.Reply()));
+    public Task ReplyAsync(string storeId, string entryId) =>
+        Run(() => RespondTo(storeId, entryId, mail => mail.Reply()));
 
-    public void ReplyAll(string storeId, string entryId) =>
-        InvokeWithRetry(() => RespondTo(storeId, entryId, mail => mail.ReplyAll()));
+    public Task ReplyAllAsync(string storeId, string entryId) =>
+        Run(() => RespondTo(storeId, entryId, mail => mail.ReplyAll()));
 
-    public void Forward(string storeId, string entryId) =>
-        InvokeWithRetry(() => RespondTo(storeId, entryId, mail => mail.Forward()));
+    public Task ForwardAsync(string storeId, string entryId) =>
+        Run(() => RespondTo(storeId, entryId, mail => mail.Forward()));
 
     private void RespondTo(string storeId, string entryId, Func<dynamic, dynamic> respond)
     {
@@ -631,7 +781,7 @@ public sealed class OutlookService : IOutlookService
     private void EnsureConnected()
     {
         if (_app is null || _ns is null)
-            throw new InvalidOperationException("OutlookService.Connect() must be called first.");
+            throw new InvalidOperationException("OutlookService.ConnectAsync() must be called first.");
     }
 
     private const uint RpcServerUnavailableHResult = 0x800706BA;
@@ -670,9 +820,96 @@ public sealed class OutlookService : IOutlookService
 
     public void Dispose()
     {
-        if (_ns is not null) ReleaseCom(_ns);
-        if (_app is not null) ReleaseCom(_app);
-        _ns = null;
-        _app = null;
+        try
+        {
+            // The RCWs belong to the worker thread and have to be let go there.
+            _worker.RunAsync(() =>
+            {
+                if (_ns is not null) ReleaseCom(_ns);
+                if (_app is not null) ReleaseCom(_app);
+                _ns = null;
+                _app = null;
+            }).Wait(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception)
+        {
+            // Shutting down - a wedged Outlook must not stop the app from closing.
+        }
+
+        _worker.Dispose();
+    }
+
+    /// <summary>
+    /// Builds a folder table's column set one property at a time and remembers where each landed.
+    /// Outlook blocks some properties outright and stores differ in what they'll hand over, so a
+    /// refused column costs that one field rather than the whole read.
+    /// </summary>
+    private sealed class TableSchema
+    {
+        /// <summary>Column index standing for "this store wouldn't give us the property".</summary>
+        public const int Missing = -1;
+
+        private readonly dynamic _columns;
+        private readonly HashSet<string> _unsupported;
+        private int _next;
+
+        public TableSchema(dynamic columns, HashSet<string> unsupported)
+        {
+            _columns = columns;
+            _unsupported = unsupported;
+        }
+
+        public int Add(string property)
+        {
+            if (_unsupported.Contains(property))
+                return Missing;
+
+            try
+            {
+                _columns.Add(property);
+                return _next++;
+            }
+            catch (Exception)
+            {
+                _unsupported.Add(property);
+                return Missing;
+            }
+        }
+
+        /// <summary>Takes the first of several spellings of one field that the store accepts.</summary>
+        public int AddAny(params string[] properties)
+        {
+            foreach (var property in properties)
+            {
+                var column = Add(property);
+                if (column != Missing)
+                    return column;
+            }
+
+            return Missing;
+        }
+    }
+
+    /// <summary>One row of a <c>Table.GetArray</c> result, read by the column indices above.</summary>
+    private readonly struct TableRow(object[,] rows, int row, int firstColumn)
+    {
+        private object? Value(int column) =>
+            column < 0 ? null : rows[row, firstColumn + column];
+
+        public string Text(int column) => Value(column) as string ?? "";
+
+        public bool Flag(int column) => Value(column) is true;
+
+        public int Number(int column, int fallback) => Value(column) is int value ? value : fallback;
+
+        public DateTime Time(int column) => Value(column) as DateTime? ?? DateTime.MinValue;
+
+        /// <summary>Binary ids come back as bytes, which is the form the object model spells in hex.</summary>
+        public string Hex(int column) => Value(column) switch
+        {
+            byte[] bytes => Convert.ToHexString(bytes),
+            string text => text,
+            _ => "",
+        };
     }
 }

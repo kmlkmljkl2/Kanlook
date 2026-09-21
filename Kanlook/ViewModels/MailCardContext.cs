@@ -22,8 +22,8 @@ public sealed record MailCardActions(
 
 /// <summary>
 /// Everything a <see cref="MailCardViewModel"/> needs, with the host's own hooks filled in. Bundled
-/// rather than passed as a row of loose callbacks, because both the board and the shared-mailbox
-/// list build cards and would otherwise have to keep the same argument order in their heads.
+/// rather than passed as a row of loose callbacks, so adding one doesn't ripple through every
+/// place that builds a card.
 /// </summary>
 public sealed class MailCardContext
 {

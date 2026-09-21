@@ -6,8 +6,8 @@ namespace Kanlook.Services;
 
 /// <summary>
 /// Fills the <see cref="AttachmentIndex"/> in the background so attachment contents become
-/// searchable. Outlook COM is STA-bound, so pulling the attachment out has to happen on the UI
-/// thread; only the parsing is handed to the thread pool, one mail at a time, to keep the UI free.
+/// searchable. Both halves stay off the UI thread: pulling the attachment out runs on the Outlook
+/// service's own thread at background priority, and the parsing goes to the thread pool.
 /// </summary>
 public sealed class AttachmentIndexer
 {
@@ -57,8 +57,6 @@ public sealed class AttachmentIndexer
                 var mail = _pending.Dequeue();
                 _queuedEntryIds.Remove(mail.EntryId);
 
-                // Awaiting inside the dispatcher loop: COM work stays on the UI thread, parsing
-                // doesn't, and the UI gets a breather between mails.
                 _index.Set(mail.EntryId, await IndexOneAsync(mail));
                 Progressed?.Invoke();
             }
@@ -76,7 +74,7 @@ public sealed class AttachmentIndexer
         List<AttachmentInfo> attachments;
         try
         {
-            attachments = _outlook.GetAttachments(mail.StoreId, mail.EntryId);
+            attachments = await _outlook.GetAttachmentsAsync(mail.StoreId, mail.EntryId);
         }
         catch (Exception)
         {
@@ -94,7 +92,7 @@ public sealed class AttachmentIndexer
             string path;
             try
             {
-                path = _outlook.SaveAttachment(mail.StoreId, mail.EntryId, attachment.Index);
+                path = await _outlook.SaveAttachmentAsync(mail.StoreId, mail.EntryId, attachment.Index);
             }
             catch (Exception)
             {

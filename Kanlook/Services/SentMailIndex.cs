@@ -9,7 +9,6 @@ namespace Kanlook.Services;
 ///
 /// Only the newest <see cref="MaxSentItems"/> sent mails are indexed, which is the same recency
 /// window the board itself works in. Replies older than that simply don't show up in a tile.
-/// All calls touch Outlook COM, so they belong on the UI thread.
 /// </summary>
 public sealed class SentMailIndex
 {
@@ -39,21 +38,21 @@ public sealed class SentMailIndex
         _byConversation.TryGetValue(conversationKey, out var sent) ? sent : [];
 
     /// <summary>
-    /// First full read of a store's Sent Items. This costs a COM call per mail, so callers should
-    /// keep it off the folder-open path. Does nothing once the store has been read.
+    /// First full read of a store's Sent Items. One table read, so it's cheap, but it still belongs
+    /// behind the folder the user asked for. Does nothing once the store has been read.
     /// </summary>
-    public void EnsureLoaded(string storeId)
+    public async Task EnsureLoadedAsync(string storeId)
     {
         if (_folders.ContainsKey(storeId))
             return;
 
-        var folderId = Try(() => _outlook.GetSentItemsFolderId(storeId));
+        var folderId = await TryAsync(() => _outlook.GetSentItemsFolderIdAsync(storeId));
         _folders[storeId] = folderId;
         if (folderId is null)
             return;
 
         _lastRefresh[storeId] = DateTime.Now;
-        var summaries = Try(() => _outlook.GetMailSummaries(storeId, folderId, MaxSentItems));
+        var summaries = await TryAsync(() => _outlook.GetMailSummariesAsync(storeId, folderId, MaxSentItems));
         if (summaries is not { Count: > 0 })
             return;
 
@@ -67,11 +66,11 @@ public sealed class SentMailIndex
     /// Picks up newly sent mail: one cheap table read to spot ids we haven't got, then a full fetch
     /// for just those. Light enough to call from the board's sync tick, and throttled on top of that.
     /// </summary>
-    public void Refresh(string storeId)
+    public async Task RefreshAsync(string storeId)
     {
         if (!_folders.TryGetValue(storeId, out var folderId))
         {
-            EnsureLoaded(storeId);
+            await EnsureLoadedAsync(storeId);
             return;
         }
 
@@ -83,7 +82,7 @@ public sealed class SentMailIndex
 
         _lastRefresh[storeId] = DateTime.Now;
 
-        var state = Try(() => _outlook.GetFolderState(storeId, folderId, MaxSentItems));
+        var state = await TryAsync(() => _outlook.GetFolderStateAsync(storeId, folderId, MaxSentItems));
         if (state is null)
             return;
 
@@ -102,7 +101,7 @@ public sealed class SentMailIndex
                 continue;
 
             fetches++;
-            var summary = Try(() => _outlook.GetMailSummary(storeId, item.EntryId));
+            var summary = await TryAsync(() => _outlook.GetMailSummaryAsync(storeId, item.EntryId));
             if (summary is null)
                 continue;
 
@@ -156,15 +155,15 @@ public sealed class SentMailIndex
     }
 
     /// <summary>Outlook can refuse a folder or item at any moment; sent history isn't worth failing over.</summary>
-    private static T? Try<T>(Func<T?> action) where T : class
+    private static async Task<T?> TryAsync<T>(Func<Task<T>> action)
     {
         try
         {
-            return action();
+            return await action();
         }
         catch (Exception)
         {
-            return null;
+            return default;
         }
     }
 }

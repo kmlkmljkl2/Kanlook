@@ -1,12 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "65Ye8cO7DU8=",
+  "dgSpecHash": "qXbXSlLUNXY=",
   "success": true,
-  "projectFilePath": "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
+  "projectFilePath": "D:\\users\\wardkev\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\kevin\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.0\\communitytoolkit.mvvm.8.4.0.nupkg.sha512",
-    "C:\\Users\\kevin\\.nuget\\packages\\gong-wpf-dragdrop\\3.2.1\\gong-wpf-dragdrop.3.2.1.nupkg.sha512",
-    "C:\\Users\\kevin\\.nuget\\packages\\pdfpig\\0.1.16\\pdfpig.0.1.16.nupkg.sha512"
+    "D:\\users\\wardkev\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.0\\communitytoolkit.mvvm.8.4.0.nupkg.sha512",
+    "D:\\users\\wardkev\\.nuget\\packages\\gong-wpf-dragdrop\\3.2.1\\gong-wpf-dragdrop.3.2.1.nupkg.sha512",
+    "D:\\users\\wardkev\\.nuget\\packages\\pdfpig\\0.1.16\\pdfpig.0.1.16.nupkg.sha512"
   ],
   "logs": []
 }

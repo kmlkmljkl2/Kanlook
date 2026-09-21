@@ -15,12 +15,25 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly BoardStateStore _boardStore;
     private readonly AttachmentIndex _attachmentIndex = new();
     private readonly AttachmentIndexer _indexer;
+    private readonly FolderTreeContext _folderTree;
+
+    /// <summary>
+    /// Shared by every board: a mail's body is the same wherever it's shown, and reading one costs a
+    /// round-trip, so it's worth keeping across folder switches.
+    /// </summary>
+    private readonly MailBodyLoader _bodyLoader;
 
     /// <summary>
     /// Shared by every board: the sent history of a store is the same wherever it's shown, and
     /// reading Sent Items is expensive enough to be worth keeping across folder switches.
     /// </summary>
     private readonly SentMailIndex _sentMail;
+
+    /// <summary>
+    /// Which folder request is the current one. Opening a folder is asynchronous, so a click while
+    /// another folder is still loading has to be able to tell the stale result to stay quiet.
+    /// </summary>
+    private int _openGeneration;
 
     public ObservableCollection<MailFolderNodeVm> RootFolders { get; } = [];
 
@@ -38,30 +51,53 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private GridLength _previewColumnWidth = new(0);
 
+    /// <summary>The sidebar's width, as the user drags the splitter. Remembered on exit.</summary>
+    [ObservableProperty]
+    private GridLength _sidebarWidth;
+
     [ObservableProperty]
     private string? _connectionErrorMessage;
+
+    /// <summary>Whether the folder tree is still being read - the sidebar says so while it is.</summary>
+    [ObservableProperty]
+    private bool _isLoadingFolders = true;
 
     public MainViewModel(IOutlookService outlook, BoardStateStore boardStore)
     {
         _outlook = outlook;
         _boardStore = boardStore;
         _indexer = new AttachmentIndexer(outlook, _attachmentIndex);
+        _bodyLoader = new MailBodyLoader(outlook);
         _sentMail = new SentMailIndex(outlook);
         Settings = new SettingsViewModel(_boardStore, RelayoutCurrentFolder);
 
+        _folderTree = new FolderTreeContext
+        {
+            LoadChildren = _outlook.GetChildFoldersAsync,
+            ApplyOrder = ApplyFolderOrder,
+            Move = MoveFolder,
+        };
+
+        _sidebarWidth = new GridLength(_boardStore.Settings.SidebarWidth);
+
         // Before anything is shown, so the first frame is already in the right colours.
         ThemeManager.Apply(_boardStore.Settings.Theme);
+    }
 
+    /// <summary>
+    /// Connects to Outlook and puts the mailboxes in the sidebar. Awaited by the window rather than
+    /// done in the constructor: on a large mailbox this is seconds of Outlook round-trips, and the
+    /// window should already be up and painted while they happen.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
         try
         {
-            _outlook.Connect();
-            CategoryPalette.Load(_outlook.GetCategoryColors());
+            await _outlook.ConnectAsync();
+            CategoryPalette.Load(await _outlook.GetCategoryColorsAsync());
 
-            foreach (var root in _outlook.BuildFolderTree())
-            {
-                // Open each mailbox straight away so its folders are there without a click.
-                RootFolders.Add(new MailFolderNodeVm(root, MoveFolder) { IsExpanded = true });
-            }
+            foreach (var root in await _outlook.GetStoreRootsAsync())
+                RootFolders.Add(new MailFolderNodeVm(root, _folderTree));
 
             ApplyFolderOrder(RootFolders, RootOrderKey);
         }
@@ -69,62 +105,86 @@ public sealed partial class MainViewModel : ObservableObject
         {
             ConnectionErrorMessage =
                 $"Couldn't connect to Outlook. Make sure the classic desktop Outlook app is installed and try again. ({ex.Message})";
+            return;
+        }
+        finally
+        {
+            IsLoadingFolders = false;
+        }
+
+        // Each mailbox opens straight away so its folders are there without a click. Expanding
+        // queues the read; the awaits below just keep the mailboxes filling in one after another
+        // rather than all at once.
+        foreach (var root in RootFolders)
+        {
+            root.IsExpanded = true;
+            await root.LoadChildrenAsync();
         }
     }
 
     partial void OnSelectedFolderChanged(MailFolderNodeVm? value)
     {
-        if (value is null)
+        if (value is null || value.IsPlaceholder)
             return;
+
+        _ = OpenFolderAsync(value, ++_openGeneration);
+    }
+
+    /// <summary>
+    /// Puts a folder's board on screen. The board itself appears at once, with its columns; the mail
+    /// follows as soon as Outlook hands it over. Shared mailboxes get the same board as your own
+    /// folders - the state is keyed by store and folder, so each keeps its own columns.
+    /// </summary>
+    private async Task OpenFolderAsync(MailFolderNodeVm node, int generation)
+    {
+        var board = new KanbanBoardViewModel(
+            node.Name,
+            FolderKeyHelper.BuildKey(node.StoreId, node.EntryId),
+            node.StoreId,
+            node.EntryId,
+            _boardStore,
+            _outlook,
+            _attachmentIndex,
+            _indexer,
+            _sentMail,
+            _bodyLoader,
+            new MailCardActions(ShowPreview, DeleteCard, SetRead, OnCardAnnotationsChanged));
+
+        (CurrentContent as IDisposable)?.Dispose();
+        CurrentContent = board;
 
         try
         {
-            var mails = _outlook.GetMailSummaries(value.StoreId, value.EntryId);
-
-            var actions = new MailCardActions(ShowPreview, DeleteCard, SetRead, OnCardAnnotationsChanged);
-
-            (CurrentContent as IDisposable)?.Dispose();
-            CurrentContent = value.IsSharedMailbox
-                ? new SharedFolderViewModel(value.Name, mails, _boardStore, actions)
-                : new KanbanBoardViewModel(
-                    value.Name,
-                    FolderKeyHelper.BuildKey(value.StoreId, value.EntryId),
-                    value.StoreId,
-                    value.EntryId,
-                    mails,
-                    _boardStore,
-                    _outlook,
-                    _attachmentIndex,
-                    _indexer,
-                    _sentMail,
-                    actions);
+            await board.LoadAsync();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (generation == _openGeneration)
         {
-            ConnectionErrorMessage = $"Couldn't load folder '{value.Name}': {ex.Message}";
+            ConnectionErrorMessage = $"Couldn't load folder '{node.Name}': {ex.Message}";
+        }
+        catch (Exception)
+        {
+            // The user moved on to another folder while this one was loading - its failure is no
+            // longer anything they can act on.
         }
     }
 
     private void ApplyFolderOrder(ObservableCollection<MailFolderNodeVm> nodes, string parentKey)
     {
         var order = _boardStore.GetFolderOrder(parentKey);
-        if (order is { Count: > 0 })
-        {
-            var sorted = nodes
-                .OrderBy(n =>
-                {
-                    var i = order.IndexOf(n.EntryId);
-                    return i < 0 ? int.MaxValue : i;
-                })
-                .ToList();
+        if (order is not { Count: > 0 })
+            return;
 
-            nodes.Clear();
-            foreach (var n in sorted)
-                nodes.Add(n);
-        }
+        var sorted = nodes
+            .OrderBy(n =>
+            {
+                var i = order.IndexOf(n.EntryId);
+                return i < 0 ? int.MaxValue : i;
+            })
+            .ToList();
 
-        foreach (var n in nodes)
-            ApplyFolderOrder(n.Children, FolderKeyHelper.BuildKey(n.StoreId, n.EntryId));
+        nodes.Clear();
+        foreach (var n in sorted)
+            nodes.Add(n);
     }
 
     private void MoveFolder(MailFolderNodeVm node, int direction)
@@ -164,15 +224,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void OnPreviewAnnotationsChanged(string entryId)
     {
-        switch (CurrentContent)
-        {
-            case KanbanBoardViewModel board:
-                board.RefreshAnnotations(entryId);
-                break;
-            case SharedFolderViewModel shared:
-                shared.RefreshAnnotations(entryId);
-                break;
-        }
+        if (CurrentContent is KanbanBoardViewModel board)
+            board.RefreshAnnotations(entryId);
     }
 
     /// <summary>And the other way round: a card's note reaches the reading pane showing that mail.</summary>
@@ -184,18 +237,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void DeleteCard(MailCardViewModel card) => DeleteMails(card.Messages);
 
+    private void DeleteMails(IReadOnlyList<MailSummary> mails) => _ = DeleteMailsAsync(mails);
+
     /// <summary>
     /// Moves mails to Outlook's Deleted Items folder and takes them off the board right away, rather
     /// than waiting for the next sync to notice.
     /// </summary>
-    private void DeleteMails(IReadOnlyList<MailSummary> mails)
+    private async Task DeleteMailsAsync(IReadOnlyList<MailSummary> mails)
     {
         var deleted = new List<string>();
         foreach (var mail in mails)
         {
             try
             {
-                _outlook.DeleteMail(mail.StoreId, mail.EntryId);
+                await _outlook.DeleteMailAsync(mail.StoreId, mail.EntryId);
                 deleted.Add(mail.EntryId);
             }
             catch (Exception ex)
@@ -207,32 +262,27 @@ public sealed partial class MainViewModel : ObservableObject
         if (deleted.Count == 0)
             return;
 
-        switch (CurrentContent)
-        {
-            case KanbanBoardViewModel board:
-                board.DropMails(deleted);
-                break;
-            case SharedFolderViewModel shared:
-                shared.DropMails(deleted);
-                break;
-        }
+        if (CurrentContent is KanbanBoardViewModel board)
+            board.DropMails(deleted);
 
         if (Preview is not null && deleted.Contains(Preview.EntryId, StringComparer.OrdinalIgnoreCase))
             ClosePreview();
     }
 
+    private void SetRead(IReadOnlyList<MailSummary> mails, bool isRead) => _ = SetReadAsync(mails, isRead);
+
     /// <summary>
     /// Marks mails read or unread in Outlook and mirrors it onto the board right away. Takes the
     /// whole list, so a conversation tile carries its entire thread.
     /// </summary>
-    private void SetRead(IReadOnlyList<MailSummary> mails, bool isRead)
+    private async Task SetReadAsync(IReadOnlyList<MailSummary> mails, bool isRead)
     {
         var changed = new List<string>();
         foreach (var mail in mails.Where(m => m.IsRead != isRead))
         {
             try
             {
-                _outlook.SetRead(mail.StoreId, mail.EntryId, isRead);
+                await _outlook.SetReadAsync(mail.StoreId, mail.EntryId, isRead);
                 mail.IsRead = isRead;
                 changed.Add(mail.EntryId);
             }
@@ -246,15 +296,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (changed.Count == 0)
             return;
 
-        switch (CurrentContent)
-        {
-            case KanbanBoardViewModel board:
-                board.RefreshMailState(changed);
-                break;
-            case SharedFolderViewModel shared:
-                shared.RefreshMailState(changed);
-                break;
-        }
+        if (CurrentContent is KanbanBoardViewModel board)
+            board.RefreshMailState(changed);
 
         if (Preview is not null && changed.Contains(Preview.EntryId, StringComparer.OrdinalIgnoreCase))
             Preview.RefreshReadState();
@@ -263,15 +306,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Re-lays out the open folder after a setting changed how its cards group or sort.</summary>
     private void RelayoutCurrentFolder()
     {
-        switch (CurrentContent)
-        {
-            case KanbanBoardViewModel board:
-                board.RebuildCards();
-                break;
-            case SharedFolderViewModel shared:
-                shared.RebuildCards();
-                break;
-        }
+        if (CurrentContent is KanbanBoardViewModel board)
+            board.RebuildCards();
     }
 
     [RelayCommand]
@@ -288,6 +324,11 @@ public sealed partial class MainViewModel : ObservableObject
     public void Shutdown()
     {
         (CurrentContent as IDisposable)?.Dispose();
+
+        // Written on the way out rather than on every pixel of a splitter drag.
+        _boardStore.Settings.SidebarWidth = SidebarWidth.Value;
+        _boardStore.Save();
+
         _attachmentIndex.Save();
         _outlook.Dispose();
     }

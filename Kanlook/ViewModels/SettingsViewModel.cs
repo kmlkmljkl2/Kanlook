@@ -49,6 +49,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
+    /// How many of a folder's newest mails to load. Typed into a text box, so anything that isn't a
+    /// number leaves the setting alone rather than resetting it mid-keystroke.
+    /// </summary>
+    public string MailsPerFolderText
+    {
+        get => _store.Settings.MailsPerFolder.ToString();
+        set
+        {
+            if (!int.TryParse(value, out var parsed) || parsed == _store.Settings.MailsPerFolder)
+                return;
+
+            _store.Settings.MailsPerFolder = parsed;
+            _store.Save();
+        }
+    }
+
+    /// <summary>Spelled out, because the box silently clamps what's typed into it.</summary>
+    public string MailsPerFolderHint =>
+        $"Between {AppSettings.MinMailsPerFolder} and {AppSettings.MaxMailsPerFolder}. " +
+        "Takes effect the next time a folder is opened.";
+
+    /// <summary>
     /// The three segments of the theme picker. Booleans rather than the enum itself, so the picker
     /// can highlight the chosen one without a value converter.
     /// </summary>

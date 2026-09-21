@@ -2,63 +2,86 @@ using Kanlook.Models;
 
 namespace Kanlook.Services;
 
+/// <summary>
+/// Every call runs on the service's own STA thread (see <see cref="ComWorker"/>) and returns a task
+/// the UI thread can await, so no Outlook round-trip ever blocks the window.
+/// </summary>
 public interface IOutlookService : IDisposable
 {
     /// <summary>Connects to the locally running/installed Outlook. Throws if unavailable.</summary>
-    void Connect();
+    Task ConnectAsync();
 
-    /// <summary>One root node per Outlook store (personal mailbox + any shared mailboxes), each with its full folder subtree.</summary>
-    List<MailFolderNode> BuildFolderTree();
+    /// <summary>
+    /// One node per Outlook store (personal mailbox + any shared mailboxes), without its subtree.
+    /// Cheap: walking a whole mailbox's folder hierarchy up front is what made opening the app slow,
+    /// so children are fetched a level at a time with <see cref="GetChildFoldersAsync"/>.
+    /// </summary>
+    Task<List<MailFolderNode>> GetStoreRootsAsync();
 
-    /// <summary>Latest mail items in a folder, newest first, capped at <paramref name="maxCount"/>.</summary>
-    List<MailSummary> GetMailSummaries(string storeId, string folderEntryId, int maxCount = 300);
+    /// <summary>The immediate subfolders of one folder. Empty when it has none or can't be opened.</summary>
+    Task<List<MailFolderNode>> GetChildFoldersAsync(string storeId, string folderEntryId);
+
+    /// <summary>
+    /// Latest mail items in a folder, newest first, capped at <paramref name="maxCount"/>. Read from
+    /// the folder's MAPI table in a single round-trip, which is why it returns in about a second even
+    /// on a large online mailbox. The body is the one thing a table can't carry, so
+    /// <see cref="MailSummary.Snippet"/> and <see cref="MailSummary.SearchBody"/> may arrive empty
+    /// and get filled in afterwards by <see cref="MailBodyLoader"/>.
+    /// </summary>
+    Task<List<MailSummary>> GetMailSummariesAsync(string storeId, string folderEntryId, int maxCount);
 
     /// <summary>
     /// Cheap batched read of a folder's newest <paramref name="maxCount"/> mails - their ids plus the
     /// properties that change under us in Outlook. Used to spot items deleted or moved away, and
     /// category / read-state edits, without opening every item.
     /// </summary>
-    List<MailItemState> GetFolderState(string storeId, string folderEntryId, int maxCount = 300);
+    Task<List<MailItemState>> GetFolderStateAsync(string storeId, string folderEntryId, int maxCount);
 
     /// <summary>Full summary for one mail. Null when the id no longer refers to a mail item.</summary>
-    MailSummary? GetMailSummary(string storeId, string entryId);
+    Task<MailSummary?> GetMailSummaryAsync(string storeId, string entryId);
+
+    /// <summary>
+    /// Plain-text body of one mail, for the card's preview line and body search. Opening the item is
+    /// a round-trip each, so this is background work - see <see cref="MailBodyLoader"/>.
+    /// </summary>
+    Task<string?> GetBodyTextAsync(string storeId, string entryId);
 
     /// <summary>
     /// Entry id of a store's Sent Items folder, so replies can be read back with
-    /// <see cref="GetMailSummaries"/>. Null when the store has no such folder (some shared stores).
+    /// <see cref="GetMailSummariesAsync"/>. Null when the store has no such folder (some shared stores).
     /// </summary>
-    string? GetSentItemsFolderId(string storeId);
+    Task<string?> GetSentItemsFolderIdAsync(string storeId);
 
     /// <summary>Outlook's master category list, as category name -&gt; display hex.</summary>
-    IReadOnlyDictionary<string, string> GetCategoryColors();
+    Task<IReadOnlyDictionary<string, string>> GetCategoryColorsAsync();
 
     /// <summary>Lazily fetches the HTML body of a single mail for preview.</summary>
-    string? GetHtmlBody(string storeId, string entryId);
+    Task<string?> GetHtmlBodyAsync(string storeId, string entryId);
 
     /// <summary>Lazily fetches attachment names/sizes for a single mail for preview.</summary>
-    List<AttachmentInfo> GetAttachments(string storeId, string entryId);
+    Task<List<AttachmentInfo>> GetAttachmentsAsync(string storeId, string entryId);
 
     /// <summary>
     /// Extracts the attachment to a temp file and opens it with its default application.
     /// Returns the attachment's file name.
     /// </summary>
-    string OpenAttachment(string storeId, string entryId, int attachmentIndex);
+    Task<string> OpenAttachmentAsync(string storeId, string entryId, int attachmentIndex);
 
     /// <summary>Extracts the attachment to a temp file and returns its path, without opening it.</summary>
-    string SaveAttachment(string storeId, string entryId, int attachmentIndex);
+    Task<string> SaveAttachmentAsync(string storeId, string entryId, int attachmentIndex);
 
     /// <summary>Moves the mail to its store's Deleted Items folder, like Outlook's own Delete.</summary>
-    void DeleteMail(string storeId, string entryId);
+    Task DeleteMailAsync(string storeId, string entryId);
 
     /// <summary>Marks the mail read or unread in Outlook, so the change shows up there too.</summary>
-    void SetRead(string storeId, string entryId, bool isRead);
+    Task SetReadAsync(string storeId, string entryId, bool isRead);
 
     /// <summary>Opens Outlook's own Reply compose window for the given mail.</summary>
-    void Reply(string storeId, string entryId);
+    Task ReplyAsync(string storeId, string entryId);
 
     /// <summary>Opens Outlook's own Reply All compose window for the given mail.</summary>
-    void ReplyAll(string storeId, string entryId);
+    Task ReplyAllAsync(string storeId, string entryId);
 
     /// <summary>Opens Outlook's own Forward compose window for the given mail.</summary>
-    void Forward(string storeId, string entryId);
+    Task ForwardAsync(string storeId, string entryId);
 }

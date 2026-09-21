@@ -27,10 +27,14 @@
             <TextBlock Grid.Column="0" Text="{Binding FolderName}" Style="{StaticResource PageTitle}"
                        VerticalAlignment="Center" />
 
-            <TextBlock Grid.Column="1" Text="{Binding IndexingStatus}" Style="{StaticResource Caption}"
-                       Margin="14,0,14,0" VerticalAlignment="Center" TextWrapping="NoWrap"
-                       TextTrimming="CharacterEllipsis"
-                       Visibility="{Binding IndexingStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+            <Grid Grid.Column="1" Margin="14,0,14,0" VerticalAlignment="Center">
+                <TextBlock Text="Loading mail…" Style="{StaticResource Caption}"
+                           Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+
+                <TextBlock Text="{Binding IndexingStatus}" Style="{StaticResource Caption}"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                           Visibility="{Binding IndexingStatus, Converter={StaticResource NullToVisibilityConverter}}" />
+            </Grid>
 
             <!-- Search: subject, sender, body, categories and attachment contents -->
             <Border Grid.Column="2" Width="264" Margin="0,0,10,0" CornerRadius="8" Padding="10,0"
@@ -275,9 +279,25 @@
 
                                     <!-- Cards -->
                                     <Grid Grid.Row="1">
-                                        <!-- Sits under the list, so it shows through while the column is empty -->
-                                        <Grid Margin="12,12,12,16" VerticalAlignment="Top"
-                                              Visibility="{Binding Cards.Count, Converter={StaticResource ZeroCountToVisibilityConverter}}">
+                                        <!--
+                                            Sits under the list, so it shows through while the column
+                                            is empty - but not while the folder is still being read,
+                                            when every column is empty and none of them means it.
+                                        -->
+                                        <Grid Margin="12,12,12,16" VerticalAlignment="Top">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility"
+                                                            Value="{Binding Cards.Count, Converter={StaticResource ZeroCountToVisibilityConverter}}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Value="True"
+                                                                     Binding="{Binding DataContext.IsLoading, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+
                                             <Rectangle Style="{StaticResource EmptyStateOutline}" MinHeight="74" />
                                             <TextBlock Text="Drag mail here" Style="{StaticResource Caption}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center" />

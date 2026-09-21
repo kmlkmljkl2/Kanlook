@@ -13,24 +13,22 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 {
     private static readonly TimeSpan SyncInterval = TimeSpan.FromSeconds(10);
 
-    /// <summary>
-    /// How far back the sync looks. Must match the initial load's window, otherwise mails the board
-    /// shows but the sync can't see would look like they'd been removed in Outlook.
-    /// </summary>
-    private const int SyncMaxCount = 300;
-
     private readonly BoardStateStore _boardStore;
     private readonly BoardState _board;
     private readonly MailCardContext _cardContext;
     private readonly MailSearch _search;
     private readonly AttachmentIndexer _indexer;
     private readonly SentMailIndex _sentMail;
+    private readonly MailBodyLoader _bodyLoader;
     private readonly IOutlookService _outlook;
     private readonly string _storeId;
     private readonly string _folderEntryId;
     private readonly HashSet<string> _knownEntryIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<MailSummary> _mails = [];
     private readonly DispatcherTimer _syncTimer;
+
+    private bool _disposed;
+    private bool _syncing;
 
     public string FolderName { get; }
 
@@ -43,22 +41,37 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     [ObservableProperty]
     private string? _indexingStatus;
 
+    /// <summary>
+    /// True until the folder's mail has arrived. The columns are on screen before that, so the
+    /// board has to be able to say the difference between "still reading" and "nothing here".
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoSearchResults))]
+    private bool _isLoading = true;
+
     private bool GroupByConversation => _boardStore.Settings.GroupByConversation;
 
     /// <summary>Whether the user wants their high-priority cards held at the top of their column.</summary>
     private bool PinHighPriority => _boardStore.Settings.PinHighPriority;
+
+    /// <summary>
+    /// How much of the folder the board works in - both the initial read and how far back the sync
+    /// looks, which have to match: mail the board shows but the sync can't see would read as
+    /// removed in Outlook and disappear.
+    /// </summary>
+    private int MailWindow => _boardStore.Settings.MailsPerFolder;
 
     public KanbanBoardViewModel(
         string folderName,
         string folderKey,
         string storeId,
         string folderEntryId,
-        List<MailSummary> mails,
         BoardStateStore boardStore,
         IOutlookService outlook,
         AttachmentIndex attachmentIndex,
         AttachmentIndexer indexer,
         SentMailIndex sentMail,
+        MailBodyLoader bodyLoader,
         MailCardActions actions)
     {
         FolderName = folderName;
@@ -76,11 +89,29 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         _search = new MailSearch(attachmentIndex);
         _indexer = indexer;
         _sentMail = sentMail;
+        _bodyLoader = bodyLoader;
 
         foreach (var def in _board.Columns.OrderBy(c => c.Order))
             Columns.Add(CreateColumnVm(def));
 
         RefreshDefaultTargetFlags();
+
+        _syncTimer = new DispatcherTimer { Interval = SyncInterval };
+        _syncTimer.Tick += (_, _) => _ = SyncWithOutlookAsync();
+    }
+
+    /// <summary>
+    /// Fills the board with the folder's mail. Separate from the constructor so the columns are on
+    /// screen while Outlook is still being asked - which is the whole difference between a folder
+    /// that opens instantly and one that opens when the mailbox feels like it.
+    /// </summary>
+    public async Task LoadAsync()
+    {
+        var mails = await _outlook.GetMailSummariesAsync(_storeId, _folderEntryId, MailWindow);
+
+        // The user moved on while Outlook was answering - this board is no longer on screen.
+        if (_disposed)
+            return;
 
         var dirty = false;
         foreach (var mail in mails)
@@ -93,19 +124,22 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
         if (dirty)
             Save();
 
+        IsLoading = false;
         RebuildCards();
 
-        _indexer.Progressed += OnIndexerProgressed;
+        _indexer.Progressed += OnBackgroundWorkProgressed;
+        _bodyLoader.Progressed += OnBackgroundWorkProgressed;
+        _bodyLoader.Loaded += OnBodyLoaded;
+        _sentMail.Changed += RefreshSentHistory;
+
+        // Both open one mail at a time at background priority, so they fill the cards in behind an
+        // already usable board rather than holding it up.
+        _bodyLoader.Enqueue(_mails);
         _indexer.Enqueue(_mails);
         RefreshIndexingStatus();
 
-        _sentMail.Changed += RefreshSentHistory;
+        _ = _sentMail.EnsureLoadedAsync(_storeId);
 
-        // Reading Sent Items costs a COM call per mail, so let the folder finish opening first.
-        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, () => _sentMail.EnsureLoaded(_storeId));
-
-        _syncTimer = new DispatcherTimer { Interval = SyncInterval };
-        _syncTimer.Tick += (_, _) => SyncWithOutlook();
         _syncTimer.Start();
     }
 
@@ -114,19 +148,34 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     [RelayCommand]
     private void ClearSearch() => SearchText = "";
 
-    private void OnIndexerProgressed()
+    private void OnBackgroundWorkProgressed()
     {
         RefreshIndexingStatus();
 
-        // Newly indexed attachment text can change what an active search matches.
+        // Newly read body or attachment text can change what an active search matches.
         if (SearchText.Length > 0)
             RebuildCards();
     }
 
-    private void RefreshIndexingStatus() =>
-        IndexingStatus = _indexer.PendingCount > 0
-            ? $"Indexing attachments… {_indexer.PendingCount} left"
-            : null;
+    /// <summary>Puts a mail's newly read body onto the card showing it.</summary>
+    private void OnBodyLoaded(MailSummary mail)
+    {
+        foreach (var card in Columns.SelectMany(c => c.Cards))
+        {
+            if (card.Summary.EntryId != mail.EntryId)
+                continue;
+
+            card.RefreshSnippet();
+            return;
+        }
+    }
+
+    private void RefreshIndexingStatus() => IndexingStatus = (_bodyLoader.PendingCount, _indexer.PendingCount) switch
+    {
+        ( > 0, _) => $"Reading messages… {_bodyLoader.PendingCount} left",
+        (_, > 0) => $"Indexing attachments… {_indexer.PendingCount} left",
+        _ => null,
+    };
 
     private void EnsureAssigned(MailSummary mail, ref bool dirty)
     {
@@ -206,7 +255,8 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     /// The search hid everything. Worth saying out loud - an empty board and a board whose mail the
     /// search filtered out look identical otherwise.
     /// </summary>
-    public bool HasNoSearchResults => SearchText.Length > 0 && Columns.All(c => c.Cards.Count == 0);
+    public bool HasNoSearchResults =>
+        !IsLoading && SearchText.Length > 0 && Columns.All(c => c.Cards.Count == 0);
 
     /// <summary>
     /// Hangs the user's own replies off the matching tiles. They're history only: the mail stays in
@@ -277,29 +327,48 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     /// Outlook's own ItemRemove event doesn't say which item went, so comparing snapshots is both
     /// simpler and more reliable than event plumbing - and it can't miss a change.
     /// </summary>
-    private void SyncWithOutlook()
+    private async Task SyncWithOutlookAsync()
     {
-        List<MailItemState> state;
+        // A tick that lands while the previous one is still waiting on Outlook would work from a
+        // half-applied board, and on a slow mailbox they would pile up.
+        if (_syncing || _disposed)
+            return;
+
+        _syncing = true;
         try
         {
-            state = _outlook.GetFolderState(_storeId, _folderEntryId, SyncMaxCount);
+            List<MailItemState> state;
+            try
+            {
+                state = await _outlook.GetFolderStateAsync(_storeId, _folderEntryId, MailWindow);
+            }
+            catch (Exception)
+            {
+                return; // best-effort - a transient Outlook hiccup shouldn't tear down the sync loop
+            }
+
+            if (_disposed)
+                return;
+
+            ApplyRemovals(state); // persists itself
+            ApplyStateChanges(state);
+
+            var changed = await ApplyArrivalsAsync(state);
+            if (_disposed)
+                return;
+
+            changed |= ApplyWaitingTimers();
+
+            // Cheap: one table read at most once a minute, then a fetch only for genuinely new replies.
+            await _sentMail.RefreshAsync(_storeId);
+
+            if (changed)
+                Save();
         }
-        catch (Exception)
+        finally
         {
-            return; // best-effort - a transient Outlook hiccup shouldn't tear down the sync loop
+            _syncing = false;
         }
-
-        ApplyRemovals(state); // persists itself
-        ApplyStateChanges(state);
-
-        var changed = ApplyArrivals(state);
-        changed |= ApplyWaitingTimers();
-
-        // Cheap: one table read at most once a minute, then a fetch only for genuinely new replies.
-        _sentMail.Refresh(_storeId);
-
-        if (changed)
-            Save();
     }
 
     /// <summary>
@@ -394,10 +463,10 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
     {
         var present = state.Select(s => s.EntryId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // The snapshot only covers the folder's newest SyncMaxCount items. If it came back full,
+        // The snapshot only covers the folder's newest MailWindow items. If it came back full,
         // anything older than its oldest row is simply out of view and must not be read as removed.
         // Non-mail rows count towards the window, which is why they're in the snapshot at all.
-        var oldestObserved = state.Count >= SyncMaxCount
+        var oldestObserved = state.Count >= MailWindow
             ? state.Min(s => s.ReceivedTime)
             : DateTime.MinValue;
 
@@ -476,27 +545,28 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
             card.RefreshState(ids);
     }
 
-    private bool ApplyArrivals(List<MailItemState> state)
+    private async Task<bool> ApplyArrivalsAsync(List<MailItemState> state)
     {
         var added = false;
 
         var arrivals = state
             .Where(s => s.IsMail && !_knownEntryIds.Contains(s.EntryId))
-            .OrderBy(s => s.ReceivedTime);
+            .OrderBy(s => s.ReceivedTime)
+            .ToList();
 
         foreach (var arrival in arrivals)
         {
             MailSummary? mail;
             try
             {
-                mail = _outlook.GetMailSummary(_storeId, arrival.EntryId);
+                mail = await _outlook.GetMailSummaryAsync(_storeId, arrival.EntryId);
             }
             catch (Exception)
             {
                 continue; // moved or deleted again between the snapshot and now
             }
 
-            if (mail is null)
+            if (mail is null || _disposed)
                 continue;
 
             var columnId = ColumnIdForArrival(mail);
@@ -576,8 +646,14 @@ public sealed partial class KanbanBoardViewModel : ObservableObject, IDropTarget
 
     public void Dispose()
     {
+        _disposed = true;
         _syncTimer.Stop();
-        _indexer.Progressed -= OnIndexerProgressed;
+
+        // Unsubscribing what LoadAsync subscribed. Harmless if it never got that far - a board can
+        // be disposed while its first read is still in flight.
+        _indexer.Progressed -= OnBackgroundWorkProgressed;
+        _bodyLoader.Progressed -= OnBackgroundWorkProgressed;
+        _bodyLoader.Loaded -= OnBodyLoaded;
         _sentMail.Changed -= RefreshSentHistory;
     }
 

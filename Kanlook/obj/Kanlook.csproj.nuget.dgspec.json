@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj": {}
+    "D:\\users\\wardkev\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj": {}
   },
   "projects": {
-    "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj": {
+    "D:\\users\\wardkev\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
+        "projectUniqueName": "D:\\users\\wardkev\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
         "projectName": "Kanlook",
-        "projectPath": "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
-        "packagesPath": "C:\\Users\\kevin\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\kevin\\RiderProjects\\Kanlook\\Kanlook\\obj\\",
+        "projectPath": "D:\\users\\wardkev\\RiderProjects\\Kanlook\\Kanlook\\Kanlook.csproj",
+        "packagesPath": "D:\\users\\wardkev\\.nuget\\packages\\",
+        "outputPath": "D:\\users\\wardkev\\RiderProjects\\Kanlook\\Kanlook\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\kevin\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "D:\\users\\wardkev\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0-windows"
@@ -39,7 +39,7 @@
           "auditLevel": "low",
           "auditMode": "all"
         },
-        "SdkAnalysisLevel": "10.0.400"
+        "SdkAnalysisLevel": "10.0.300"
       },
       "frameworks": {
         "net10.0-windows": {
@@ -78,7 +78,7 @@
               "privateAssets": "none"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "D:\\users\\wardkev\\dotnet10\\sdk\\10.0.302/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",

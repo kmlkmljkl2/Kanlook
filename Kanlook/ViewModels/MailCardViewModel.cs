@@ -172,6 +172,13 @@ public sealed partial class MailCardViewModel : ObservableObject
         return false;
     }
 
+    /// <summary>
+    /// Shows the preview line once the mail's body has been read. A folder is listed from a MAPI
+    /// table, which carries everything about a mail but its body, so the line arrives a moment
+    /// after the card does.
+    /// </summary>
+    public void RefreshSnippet() => OnPropertyChanged(nameof(Snippet));
+
     /// <summary>Re-reads the tile's messages after Outlook changed their categories or read state.</summary>
     public void RefreshState(ICollection<string> entryIds)
     {

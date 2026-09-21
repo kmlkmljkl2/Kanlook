@@ -63,6 +63,28 @@
                 </StackPanel>
             </Border>
 
+            <TextBlock Text="LOADING" Style="{StaticResource SectionLabel}" Margin="0,20,0,8" />
+
+            <Border Style="{StaticResource SettingsCard}">
+                <StackPanel>
+                    <TextBlock Text="Mails per folder" Style="{StaticResource FieldLabel}" FontSize="13" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,4,0,10"
+                               Text="How far back a board reaches. The list itself arrives in one go whatever this is; what grows with it is the message text filling in behind the cards." />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Grid.Column="0" FontSize="12" VerticalAlignment="Center"
+                                 Text="{Binding MailsPerFolderText, UpdateSourceTrigger=LostFocus}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource Caption}" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" Text="{Binding MailsPerFolderHint}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource Divider}" Margin="-24,22,-24,0" />
 
             <Button Content="Done" Style="{StaticResource AccentButton}" HorizontalAlignment="Right"

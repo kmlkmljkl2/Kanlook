@@ -15,13 +15,37 @@ public sealed partial class MailSummary
     /// <summary>Outlook's CreationTime - what the board sorts on.</summary>
     public required DateTime CreationTime { get; init; }
 
-    public string Snippet { get; init; } = "";
+    /// <summary>
+    /// The preview line on the card. Empty until the body has been read - a folder's mail arrives
+    /// from a MAPI table, which can carry everything about a mail except its body.
+    /// </summary>
+    public string Snippet { get; private set; } = "";
+
+    /// <summary>Body text kept for searching (capped). Arrives with <see cref="Snippet"/>.</summary>
+    public string SearchBody { get; private set; } = "";
 
     /// <summary>
-    /// Body text kept for searching (capped). Free to collect: the body is already read to build
-    /// <see cref="Snippet"/>.
+    /// Whether the body has been read yet. False on a freshly listed folder, and set once
+    /// <see cref="SetBodyText"/> has run - which is how <c>MailBodyLoader</c> knows what's left.
     /// </summary>
-    public string SearchBody { get; init; } = "";
+    public bool BodyLoaded { get; private set; }
+
+    private const int SnippetMaxChars = 160;
+    private const int SearchBodyMaxChars = 8_000;
+
+    /// <summary>
+    /// Records the mail's body: a one-line snippet for the card and a capped copy for searching.
+    /// Both are flattened, because a card shows one line and a search doesn't care about layout.
+    /// </summary>
+    public void SetBodyText(string? body)
+    {
+        var flattened = (body ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
+
+        Snippet = flattened.Length > SnippetMaxChars ? flattened[..SnippetMaxChars] + "…" : flattened;
+        SearchBody = flattened.Length > SearchBodyMaxChars ? flattened[..SearchBodyMaxChars] : flattened;
+        BodyLoaded = true;
+    }
+
     public bool HasAttachments { get; init; }
     public MailImportance Importance { get; init; } = MailImportance.Normal;
 
@@ -35,8 +59,18 @@ public sealed partial class MailSummary
         ? []
         : Categories.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-    /// <summary>Outlook's own conversation id. Empty when the store/item doesn't expose one.</summary>
-    public string ConversationId { get; init; } = "";
+    /// <summary>
+    /// Outlook's own conversation id. Empty when the store/item doesn't expose one. Upper-cased on
+    /// the way in: it reaches us as hex either from the object model or from a table's raw bytes,
+    /// and two spellings of one id would split a conversation across two cards.
+    /// </summary>
+    public string ConversationId
+    {
+        get => _conversationId;
+        init => _conversationId = value.ToUpperInvariant();
+    }
+
+    private readonly string _conversationId = "";
 
     /// <summary>Outlook's conversation topic (the subject with Re:/Fw: prefixes already stripped).</summary>
     public string ConversationTopic { get; init; } = "";
